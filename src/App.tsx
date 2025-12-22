@@ -1,19 +1,19 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import { Toaster } from 'sonner'
+import RealtimeMessenger from './pages/RealtimeMessenger'
 
 function App() {
   return (
-    <div className="min-h-screen bg-background">
-      <Routes>
-        <Route path="/" element={
-          <div className="container mx-auto p-8">
-            <h1 className="text-4xl font-bold">Dragvertising Messenger</h1>
-            <p className="mt-4 text-muted-foreground">
-              Real-time messaging platform for the Dragvertising ecosystem
-            </p>
-          </div>
-        } />
-      </Routes>
-    </div>
+    <AuthProvider>
+      <div className="min-h-screen bg-background">
+        <Routes>
+          <Route path="/" element={<RealtimeMessenger />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        <Toaster position="top-right" />
+      </div>
+    </AuthProvider>
   )
 }
 
