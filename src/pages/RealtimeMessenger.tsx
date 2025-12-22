@@ -560,7 +560,7 @@ export default function RealtimeMessenger() {
       }
 
       // Build conversation list
-      const conversationList: Conversation[] = (participantData || [])
+      const conversationListRaw = (participantData || [])
         .map((p: any) => {
           const convData = conversationsMap[p.conversation_id];
           const participants = participantsByConversation[p.conversation_id] || [];
@@ -596,11 +596,12 @@ export default function RealtimeMessenger() {
             last_message: lastMessagesByConversation[p.conversation_id],
             unread_count: unreadCountsMap[p.conversation_id] || 0
           };
-        })
-        .filter((c): c is Conversation => {
-          if (!c) return false;
-          return conversationsMap[c.id] !== undefined;
-        }); // Only include valid conversations
+        });
+      
+      // Filter out nulls and invalid conversations
+      const conversationList: Conversation[] = conversationListRaw.filter((c): c is Conversation => {
+        return c !== null && c !== undefined && conversationsMap[c.id] !== undefined;
+      });
 
       // Final check: Ensure all conversations have participant profiles
       const conversationsNeedingProfiles = conversationList.filter((conv: Conversation) => {
