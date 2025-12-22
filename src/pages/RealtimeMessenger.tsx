@@ -32,22 +32,11 @@ import {
 } from '@/components/ui/dialog';
 import { 
   MessageSquare, 
-  Bell, 
   Search, 
   Send, 
-  Filter, 
-  MoreVertical,
-  CheckCheck,
-  Check,
-  Clock,
-  Star,
-  Archive,
-  Trash2,
   UserPlus,
   Settings,
-  Smile,
   Paperclip,
-  Image as ImageIcon,
   Loader2,
   Users,
   X,
@@ -145,7 +134,6 @@ export default function RealtimeMessenger() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [activeTab, setActiveTab] = useState<'messages' | 'notifications'>('messages');
   const [filterType, setFilterType] = useState<'all' | 'unread' | 'pinned' | 'archived'>('all');
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingIndicator>>(new Map());
   const [onlineUsers, setOnlineUsers] = useState<Map<string, OnlineUser>>(new Map());
@@ -385,7 +373,7 @@ export default function RealtimeMessenger() {
       }
       
       // Group participants by conversation
-      const participantsByConversation = (allParticipants || []).reduce((acc, p) => {
+      const participantsByConversation = (allParticipants || []).reduce((acc: Record<string, any[]>, p: any) => {
         if (!acc[p.conversation_id]) acc[p.conversation_id] = [];
         
         // Normalize the participant structure - Supabase returns profile_universes as nested object
@@ -573,7 +561,7 @@ export default function RealtimeMessenger() {
 
       // Build conversation list
       const conversationList: Conversation[] = (participantData || [])
-        .map(p => {
+        .map((p: any) => {
           const convData = conversationsMap[p.conversation_id];
           const participants = participantsByConversation[p.conversation_id] || [];
           
@@ -588,7 +576,7 @@ export default function RealtimeMessenger() {
           
           // Debug: Log conversation being built
           if (process.env.NODE_ENV === 'development') {
-            const otherParticipant = participants.find(part => part.profile_universe_id !== universe.id);
+            const otherParticipant = participants.find((part: any) => part.profile_universe_id !== universe.id);
             if (!otherParticipant?.profile_universe) {
               console.warn('[RealtimeMessenger] Conversation missing other participant profile:', {
                 conversation_id: p.conversation_id,
@@ -609,11 +597,14 @@ export default function RealtimeMessenger() {
             unread_count: unreadCountsMap[p.conversation_id] || 0
           };
         })
-        .filter((c): c is Conversation => c !== null && conversationsMap[c.id] !== undefined); // Only include valid conversations
+        .filter((c): c is Conversation => {
+          if (!c) return false;
+          return conversationsMap[c.id] !== undefined;
+        }); // Only include valid conversations
 
       // Final check: Ensure all conversations have participant profiles
-      const conversationsNeedingProfiles = conversationList.filter(conv => {
-        const otherParticipant = conv.participants.find(p => p.profile_universe_id !== universe.id);
+      const conversationsNeedingProfiles = conversationList.filter((conv: Conversation) => {
+        const otherParticipant = conv.participants.find((p: ConversationParticipant) => p.profile_universe_id !== universe.id);
         return !otherParticipant?.profile_universe;
       });
       
@@ -811,6 +802,11 @@ export default function RealtimeMessenger() {
       return; // Already sending
     }
 
+    if (!user) {
+      toast.error('You must be logged in to send messages');
+      return;
+    }
+
     setIsSending(true);
 
     // Store message content and attachments for optimistic update
@@ -823,7 +819,7 @@ export default function RealtimeMessenger() {
     const optimisticMessage: Message = {
       id: tempMessageId,
       conversation_id: selectedConversation.id,
-      sender_id: user!.id,
+      sender_id: user.id,
       sender_profile_universe_id: universe.id,
       content: messageContent,
       message_type: 'direct',
@@ -834,7 +830,7 @@ export default function RealtimeMessenger() {
       sender_profile: {
         handle: universe.handle,
         display_name: universe.display_name || universe.handle,
-        avatar_url: universe.avatar_url,
+        avatar_url: universe.avatar_url || undefined,
         role: universe.role
       },
       reactions: []
@@ -884,16 +880,13 @@ export default function RealtimeMessenger() {
         return;
       }
 
-      // Fetch recipient user_id if not already available in participant data
-      let recipientUserId: string | undefined = recipientUniverse.user_id;
-      if (!recipientUserId) {
-        const { data: recipientUniverseData } = await supabase
-          .from('profile_universes')
-          .select('user_id')
-          .eq('id', recipientUniverseId)
-          .single();
-        recipientUserId = recipientUniverseData?.user_id;
-      }
+      // Fetch recipient user_id
+      const { data: recipientUniverseData } = await supabase
+        .from('profile_universes')
+        .select('user_id')
+        .eq('id', recipientUniverseId)
+        .single();
+      const recipientUserId = recipientUniverseData?.user_id;
 
       console.log('Sending message with universe:', {
         conversation_id: selectedConversation.id,
@@ -916,7 +909,7 @@ export default function RealtimeMessenger() {
             const fileName = `messages/${user.id}/${universe.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
             
             // Upload to Supabase Storage - use messages-attachments bucket
-            const { data: uploadData, error: uploadError } = await supabase.storage
+            const { error: uploadError } = await supabase.storage
               .from('messages-attachments')
               .upload(fileName, attachment.file, {
                 cacheControl: '3600',
@@ -968,6 +961,23 @@ export default function RealtimeMessenger() {
       // Include recipient_id if available (may be required by schema)
       if (recipientUserId) {
         messagePayload.recipient_id = recipientUserId;
+      } else {
+        // If recipientUserId is not available, we still need to set it
+        // Try to get it from the recipient universe
+        const { data: recipientData } = await supabase
+          .from('profile_universes')
+          .select('user_id')
+          .eq('id', recipientUniverseId)
+          .single();
+        if (recipientData?.user_id) {
+          messagePayload.recipient_id = recipientData.user_id;
+        } else {
+          // If we still can't get it, we can't send the message
+          setMessages(prev => prev.filter(m => m.id !== tempMessageId));
+          toast.error('Cannot find recipient user. Please refresh and try again.');
+          setIsSending(false);
+          return;
+        }
       }
 
       // Include attachments in metadata
@@ -985,7 +995,7 @@ export default function RealtimeMessenger() {
 
       const { error } = await supabase
         .from('messages')
-        .insert(messagePayload, { returning: 'minimal' }); // avoid ambiguous column errors from joined selects; realtime will hydrate
+        .insert(messagePayload); // realtime will hydrate
 
       if (error) {
         console.error('Error sending message:', {
@@ -1006,7 +1016,7 @@ export default function RealtimeMessenger() {
       // The optimistic message will be removed when the real one comes in
       
       // Stop typing indicator
-      if (conversationChannelRef.current) {
+      if (conversationChannelRef.current && user) {
         conversationChannelRef.current.send({
           type: 'broadcast',
           event: 'typing',
@@ -1328,7 +1338,7 @@ export default function RealtimeMessenger() {
         const state: RealtimePresenceState<OnlineUser> = channel.presenceState();
         const users = new Map<string, OnlineUser>();
         
-        Object.entries(state).forEach(([key, presences]) => {
+        Object.entries(state).forEach(([, presences]) => {
           presences.forEach((presence: any) => {
             users.set(presence.user_id, presence);
           });
@@ -1336,10 +1346,10 @@ export default function RealtimeMessenger() {
         
         setOnlineUsers(users);
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
         console.log('[Presence] User joined:', newPresences);
       })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
         console.log('[Presence] User left:', leftPresences);
       })
       .subscribe(async (status) => {
@@ -1789,7 +1799,6 @@ export default function RealtimeMessenger() {
                 // Determine if this is a group or show conversation
                 const isGroup = conversation.type === 'group';
                 const isShow = conversation.type === 'show';
-                const isDirect = conversation.type === 'direct' || !conversation.type;
                 
                 // For group/show conversations, use the conversation name
                 // For direct messages, use the other participant's name
