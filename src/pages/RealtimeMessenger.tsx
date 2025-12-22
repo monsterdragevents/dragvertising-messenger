@@ -15,7 +15,6 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUniverse } from '@/hooks/shared/useUniverse';
-import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel, RealtimePresenceState } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
