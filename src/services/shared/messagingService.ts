@@ -52,3 +52,4 @@ export const messagingService = {
     return data.messages || (Array.isArray(data) ? data : []) || [];
   },
 };
+

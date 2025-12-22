@@ -57,3 +57,4 @@ class EdgeFunctionClient {
 }
 
 export const edgeFunctionService = new EdgeFunctionClient();
+

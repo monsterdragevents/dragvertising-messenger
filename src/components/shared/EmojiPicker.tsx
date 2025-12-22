@@ -102,3 +102,4 @@ export function EmojiPicker({ onEmojiSelect, trigger, className }: EmojiPickerPr
     </Popover>
   );
 }
+

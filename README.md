@@ -1,6 +1,6 @@
 # 💬 Dragvertising Messenger
 
-A real-time messaging platform for the Dragvertising ecosystem, enabling seamless communication between talent, producers, promoters, and fans.
+A standalone real-time messaging platform for the Dragvertising ecosystem, enabling seamless communication between talent, producers, promoters, and fans.
 
 ---
 
@@ -20,13 +20,21 @@ npm run build        # Build for production
 dragvertising-messenger/
 ├── src/                    # Source code
 │   ├── components/         # React components
+│   │   ├── shared/         # Shared components (EmojiPicker)
+│   │   └── ui/             # UI primitives (shadcn)
 │   ├── pages/             # Page components
+│   │   └── RealtimeMessenger.tsx  # Main messenger component
 │   ├── hooks/             # Custom React hooks
-│   ├── services/          # Service layer (Supabase, messaging)
+│   │   └── shared/        # Shared hooks (useUniverse, use-toast)
+│   ├── services/          # Service layer
+│   │   └── shared/        # Messaging services
 │   ├── lib/               # Utility libraries
-│   ├── types/             # TypeScript definitions
-│   ├── contexts/          # React contexts
-│   └── routes/            # Route definitions
+│   │   ├── messenger/     # Messenger utilities
+│   │   └── utils.ts       # General utilities
+│   ├── contexts/          # React contexts (AuthContext)
+│   ├── integrations/      # External integrations
+│   │   └── supabase/      # Supabase client
+│   └── types/             # TypeScript definitions
 │
 ├── docs/                  # Documentation
 ├── scripts/                # Utility scripts
@@ -44,14 +52,16 @@ dragvertising-messenger/
 ### Prerequisites
 - Node.js 18+
 - npm
-- Supabase account and project
+- Supabase account and project (same as main Dragvertising app)
 
 ### Environment Setup
 Create `.env.local` and configure:
 ```env
-VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+
+**Note:** This messenger uses the **same Supabase instance** as the main Dragvertising app, so you can use the same credentials.
 
 ### Commands
 ```bash
@@ -67,21 +77,115 @@ npm run typecheck    # Type check
 
 ### Key Features
 - **Real-time Messaging**: Supabase Realtime for instant message delivery
+- **Video Calls**: WebRTC-based 1-on-1 video calling
 - **Universe-aware**: Multi-tenant messaging with universe isolation
 - **Role-based Access**: Secure messaging based on user roles
 - **File Sharing**: Support for images, documents, and media
 - **Group Chats**: Multi-participant conversations
 - **Direct Messages**: One-on-one conversations
+- **Typing Indicators**: Real-time typing status
+- **Online Presence**: See who's online
+- **Read Receipts**: Message read status
+- **Emoji Support**: Built-in emoji picker
+- **Android Integration**: Supports video calls with Android Broadcaster app
 
 ### Tech Stack
 - **Frontend**: React 18 + TypeScript + Vite
-- **UI**: Radix UI + Tailwind CSS
-- **State Management**: Zustand + React Query
+- **UI**: Radix UI + Tailwind CSS + shadcn/ui
+- **State Management**: React Query + Zustand
 - **Backend**: Supabase (PostgreSQL + Realtime)
 - **Routing**: React Router v7
+- **Notifications**: Sonner (toast notifications)
+
+### Authentication
+- Uses the same Supabase auth as the main Dragvertising app
+- Users can log in with the same credentials
+- Universe selection is preserved across apps
+
+---
+
+## 📦 Components
+
+### Main Components
+- **RealtimeMessenger**: Full-featured messenger interface (Facebook Messenger style)
+- **VideoCallDialog**: Full-screen video call interface with WebRTC
+- **EmojiPicker**: Emoji selection component
+- **AuthContext**: Authentication context provider
+- **useUniverse**: Hook for universe management
+
+### Video Calling Hooks
+- **useVideoCallSignaling**: WebRTC signaling via Supabase Realtime
+- **useVideoCall**: WebRTC peer connection management
+
+### Services
+- **messagingService**: Message creation and retrieval
+- **edgeFunctionService**: Supabase Edge Function client
+- **conversationUtils**: Conversation management utilities
+
+---
+
+## 🔗 Integration with Main App
+
+This messenger is designed to work alongside the main Dragvertising app:
+
+1. **Shared Database**: Uses the same Supabase project
+2. **Shared Auth**: Same authentication system
+3. **Shared Universe System**: Same universe/role system
+4. **Standalone UI**: Independent interface optimized for messaging
+
+Users can access the messenger at a separate URL while maintaining the same authentication and universe context.
+
+### Video Calling & Android Integration
+
+The messenger supports video calling via WebRTC and integrates with the Android Broadcaster app:
+
+- **WebRTC Video Calls**: 1-on-1 peer-to-peer video calls using Supabase Realtime for signaling
+- **Android Broadcaster**: Supports video calls and livestreaming integration
+- **Mux Livestreaming**: Group calls and broadcasting via Mux (shared with Android app)
+
+See [Android Broadcaster Integration Guide](./docs/ANDROID_BROADCASTER_INTEGRATION.md) for detailed integration instructions.
+
+---
+
+## 🚀 Deployment
+
+### Vercel Deployment
+```bash
+vercel --prod
+```
+
+### Subdomain Setup
+
+The messenger is configured to work on its own subdomain: `messenger.dragvertising.com`
+
+**To add the subdomain:**
+```bash
+bash scripts/add-messenger-subdomain.sh
+```
+
+Or manually:
+```bash
+vercel domains add messenger.dragvertising.com
+```
+
+**DNS Configuration:**
+Add a CNAME record:
+- Type: CNAME
+- Name: messenger
+- Value: cname.vercel-dns.com (or the value Vercel provides)
+
+Vercel will automatically provision an SSL certificate once DNS propagates.
+
+See [Messenger Subdomain Setup](../DragvertisingApp/docs/deployment/MESSENGER_SUBDOMAIN_SETUP.md) for detailed instructions.
+
+### Environment Variables
+Set these in your deployment platform:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
 ---
 
 ## 📝 License
 
 © 2026 Dragvertising LLC. All rights reserved.
+

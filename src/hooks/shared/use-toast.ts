@@ -10,3 +10,4 @@ export const toast = {
   info: (message: string) => sonnerToast.info(message),
   warning: (message: string) => sonnerToast.warning(message),
 };
+

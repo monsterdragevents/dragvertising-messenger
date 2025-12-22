@@ -15,6 +15,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUniverse } from '@/hooks/shared/useUniverse';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel, RealtimePresenceState } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -40,9 +47,25 @@ import {
   Loader2,
   Users,
   X,
-  File
+  File,
+  Video,
+  MoreVertical,
+  Edit,
+  Trash2,
+  Reply,
+  Pin,
+  Archive,
+  Bell,
+  BellOff,
+  Smile,
+  CheckCheck,
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { EmojiPicker } from '@/components/shared/EmojiPicker';
+import { VideoCallDialog } from '@/components/shared/VideoCallDialog';
+import { UniverseSwitcher } from '@/components/shared/UniverseSwitcher';
 import { toast } from '@/hooks/shared/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -90,6 +113,7 @@ interface Message {
   edited_at?: string;
   deleted_at?: string;
   reply_to_message_id?: string;
+  read_at?: string;
   metadata?: any;
   attachments?: any[];
   sender_profile: {
@@ -99,6 +123,17 @@ interface Message {
     role: string;
   };
   reactions?: MessageReaction[];
+  reply_to_message?: {
+    id: string;
+    content: string;
+    sender_profile_universe_id: string;
+    profile_universes?: {
+      id: string;
+      handle: string;
+      display_name: string;
+      avatar_url?: string;
+    };
+  };
 }
 
 interface MessageReaction {
@@ -121,10 +156,34 @@ interface OnlineUser {
 }
 
 export default function RealtimeMessenger() {
-  const { user } = useAuth();
-  const { universe, isLoading: universeLoading } = useUniverse();
+  const { user, session, loading: authLoading } = useAuth();
+  const { universe, isLoading: universeLoading, availableUniverses } = useUniverse();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Redirect to landing page if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, authLoading, navigate]);
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated (will redirect)
+  if (!user) {
+    return null;
+  }
   
   // State
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -148,6 +207,22 @@ export default function RealtimeMessenger() {
     role: string;
     avatar_url?: string;
   }>>([]);
+  const [isGroupMode, setIsGroupMode] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<Array<{
+    id: string;
+    display_name: string;
+    handle: string;
+    avatar_url?: string;
+  }>>([]);
+  
+  // Video call dialog state
+  const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const [videoCallParticipant, setVideoCallParticipant] = useState<{
+    userId: string;
+    universeId: string;
+    userName: string;
+    userAvatar?: string;
+  } | null>(null);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   
   // File attachments state
@@ -161,6 +236,16 @@ export default function RealtimeMessenger() {
   
   // Mobile responsive state
   const [showSidebar, setShowSidebar] = useState(true);
+  // Desktop sidebar collapsed state (shows only avatars when collapsed)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  // Message interaction state
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageContent, setEditingMessageContent] = useState('');
+  const [replyingToMessageId, setReplyingToMessageId] = useState<string | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [messageSearchQuery, setMessageSearchQuery] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationChannelRef = useRef<RealtimeChannel | null>(null);
@@ -190,20 +275,25 @@ export default function RealtimeMessenger() {
       let participantData: any[] = [];
       
       // Try to load from conversation_participants table first (new schema)
+      // Load ALL conversations including archived ones
       const { data: participantDataNew, error: participantsError } = await supabase
         .from('conversation_participants')
         .select('conversation_id, is_archived, is_muted, is_pinned, last_read_at')
-        .eq('profile_universe_id', universe.id);
+        .eq('profile_universe_id', universe.id)
+        // No limit - load all conversations
+        .order('last_read_at', { ascending: false, nullsFirst: false });
 
       if (!participantsError && participantDataNew && participantDataNew.length > 0) {
         participantData = participantDataNew;
         conversationIds = participantDataNew.map(p => p.conversation_id);
       } else {
         // Fallback: Load from conversations table using participant1/participant2 (old schema)
+        // Load ALL conversations - no limit
         const { data: conversationsOld, error: conversationsError } = await supabase
           .from('conversations')
           .select('id, participant1_universe_id, participant2_universe_id')
-          .or(`participant1_universe_id.eq.${universe.id},participant2_universe_id.eq.${universe.id}`);
+          .or(`participant1_universe_id.eq.${universe.id},participant2_universe_id.eq.${universe.id}`)
+          .order('last_message_at', { ascending: false, nullsFirst: false });
 
         if (conversationsError) {
           console.error('Error loading conversations:', {
@@ -352,6 +442,7 @@ export default function RealtimeMessenger() {
       }
 
       // Load last messages for conversations
+      // Get ALL messages (no limit) and then reduce to get the most recent per conversation
       const { data: lastMessages, error: messagesError } = await supabase
         .from('messages')
         .select('conversation_id, content, sender_profile_universe_id, created_at')
@@ -565,9 +656,10 @@ export default function RealtimeMessenger() {
           const convData = conversationsMap[p.conversation_id];
           const participants = participantsByConversation[p.conversation_id] || [];
           
-          // Skip conversations with no participants or only one participant
-          if (participants.length < 2) {
-            console.warn('[RealtimeMessenger] Skipping conversation with insufficient participants:', {
+          // Skip conversations with no participants
+          // Allow conversations with only one participant (might be group conversations being set up)
+          if (participants.length < 1) {
+            console.warn('[RealtimeMessenger] Skipping conversation with no participants:', {
               conversation_id: p.conversation_id,
               participant_count: participants.length
             });
@@ -622,6 +714,16 @@ export default function RealtimeMessenger() {
       }
 
       setConversations(conversationList);
+      
+      // Log summary for debugging
+      console.log('[RealtimeMessenger] Loaded conversations:', {
+        total: conversationList.length,
+        withMessages: conversationList.filter(c => c.last_message).length,
+        archived: conversationList.filter(c => 
+          c.participants.some(p => p.profile_universe_id === universe.id && p.is_archived)
+        ).length,
+        unread: conversationList.filter(c => c.unread_count > 0).length
+      });
     } catch (error: any) {
       console.error('Error loading conversations:', error);
       toast.error('Failed to load conversations');
@@ -651,6 +753,7 @@ export default function RealtimeMessenger() {
           edited_at,
           deleted_at,
           reply_to_message_id,
+          read_at,
           metadata,
           attachments,
           profile_universes:sender_profile_universe_id(
@@ -664,12 +767,18 @@ export default function RealtimeMessenger() {
             id,
             emoji,
             profile_universe_id,
-            created_at
+            created_at,
+            profile_universes:profile_universe_id(
+              id,
+              handle,
+              display_name
+            )
           )
         `)
         .eq('conversation_id', conversationId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        // No limit - load all messages in the conversation
 
       if (error) throw error;
 
@@ -718,10 +827,12 @@ export default function RealtimeMessenger() {
           edited_at: m.edited_at,
           deleted_at: m.deleted_at,
           reply_to_message_id: m.reply_to_message_id,
+          read_at: m.read_at,
           metadata: metadata || {},
           attachments: m.attachments,
           sender_profile: senderProfile || null,
-          reactions: m.message_reactions as any
+          reactions: m.message_reactions as any,
+          reply_to_message: undefined // Will be populated from messages array if needed
         };
         
         // Debug: Log messages with attachments
@@ -762,16 +873,44 @@ export default function RealtimeMessenger() {
         }
       }
 
-      setMessages(formattedMessages);
+      // Populate reply_to_message from messages array
+      const messagesWithReplies = formattedMessages.map(msg => {
+        if (msg.reply_to_message_id) {
+          const repliedTo = formattedMessages.find(m => m.id === msg.reply_to_message_id);
+          if (repliedTo) {
+            return {
+              ...msg,
+              reply_to_message: {
+                id: repliedTo.id,
+                content: repliedTo.content,
+                sender_profile_universe_id: repliedTo.sender_profile_universe_id,
+                profile_universes: repliedTo.sender_profile
+              }
+            };
+          }
+        }
+        return msg;
+      });
+      
+      setMessages(messagesWithReplies);
       scrollToBottom();
 
       // Mark messages as read
       if (universe?.id) {
+        // Update conversation participant last_read_at
         await supabase
           .from('conversation_participants')
           .update({ last_read_at: new Date().toISOString() })
           .eq('conversation_id', conversationId)
           .eq('profile_universe_id', universe.id);
+        
+        // Update message read_at for messages not from current user
+        await supabase
+          .from('messages')
+          .update({ read_at: new Date().toISOString() })
+          .eq('conversation_id', conversationId)
+          .neq('sender_profile_universe_id', universe.id)
+          .is('read_at', null);
       }
     } catch (error: any) {
       console.error('Error loading messages:', error);
@@ -1034,7 +1173,7 @@ export default function RealtimeMessenger() {
     } finally {
       setIsSending(false);
     }
-  }, [newMessage, selectedConversation, universe, user, isSending, scrollToBottom, navigate, attachments]);
+  }, [newMessage, selectedConversation, universe, user, isSending, scrollToBottom, navigate, attachments, replyingToMessageId]);
 
   // Handle file selection
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1085,6 +1224,355 @@ export default function RealtimeMessenger() {
   }, []);
 
   // =====================================================
+  // MESSAGE REACTIONS
+  // =====================================================
+  const handleAddReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!universe?.id) return;
+
+    // Check if user already reacted with this emoji
+    const existingReaction = messages
+      .find(m => m.id === messageId)
+      ?.reactions
+      ?.find(r => r.profile_universe_id === universe.id && r.emoji === emoji);
+
+    const isRemoving = !!existingReaction;
+    const tempReactionId = `temp-reaction-${Date.now()}`;
+
+    // Optimistic update: immediately update UI
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) return msg;
+      
+      const currentReactions = msg.reactions || [];
+      
+      if (isRemoving) {
+        // Remove reaction optimistically
+        return {
+          ...msg,
+          reactions: currentReactions.filter(r => r.id !== existingReaction.id)
+        };
+      } else {
+        // Add reaction optimistically
+        const newReaction = {
+          id: tempReactionId,
+          emoji,
+          profile_universe_id: universe.id,
+          created_at: new Date().toISOString(),
+          profile_universes: {
+            id: universe.id,
+            handle: universe.handle,
+            display_name: universe.display_name || universe.handle
+          }
+        };
+        return {
+          ...msg,
+          reactions: [...currentReactions, newReaction]
+        };
+      }
+    }));
+
+    try {
+      if (isRemoving) {
+        // Remove reaction
+        const { error } = await supabase
+          .from('message_reactions')
+          .delete()
+          .eq('id', existingReaction.id);
+
+        if (error) throw error;
+      } else {
+        // Add reaction
+        const { data, error } = await supabase
+          .from('message_reactions')
+          .insert({
+            message_id: messageId,
+            profile_universe_id: universe.id,
+            emoji: emoji
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Replace temp reaction with real one
+        if (data) {
+          setMessages(prev => prev.map(msg => {
+            if (msg.id !== messageId) return msg;
+            const currentReactions = msg.reactions || [];
+            return {
+              ...msg,
+              reactions: currentReactions.map(r => 
+                r.id === tempReactionId ? { ...r, id: data.id } : r
+              )
+            };
+          }));
+        }
+      }
+    } catch (error: any) {
+      console.error('Error handling reaction:', error);
+      // Revert optimistic update on error
+      setMessages(prev => prev.map(msg => {
+        if (msg.id !== messageId) return msg;
+        const currentReactions = msg.reactions || [];
+        
+        if (isRemoving) {
+          // Restore removed reaction
+          return {
+            ...msg,
+            reactions: [...currentReactions, existingReaction]
+          };
+        } else {
+          // Remove added reaction
+          return {
+            ...msg,
+            reactions: currentReactions.filter(r => r.id !== tempReactionId)
+          };
+        }
+      }));
+      toast.error('Failed to update reaction');
+    }
+  }, [universe?.id, messages]);
+
+  // =====================================================
+  // MESSAGE EDITING
+  // =====================================================
+  const handleEditMessage = useCallback((message: Message) => {
+    setEditingMessageId(message.id);
+    setEditingMessageContent(message.content);
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingMessageId || !editingMessageContent.trim()) return;
+
+    const originalContent = messages.find(m => m.id === editingMessageId)?.content;
+    const editedAt = new Date().toISOString();
+
+    // Optimistic update: immediately update UI
+    setMessages(prev => prev.map(msg => 
+      msg.id === editingMessageId
+        ? { ...msg, content: editingMessageContent.trim(), edited_at: editedAt }
+        : msg
+    ));
+
+    setEditingMessageId(null);
+    setEditingMessageContent('');
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({
+          content: editingMessageContent.trim(),
+          edited_at: editedAt
+        })
+        .eq('id', editingMessageId)
+        .eq('sender_profile_universe_id', universe?.id); // Only allow editing own messages
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Error editing message:', error);
+      // Revert optimistic update on error
+      setMessages(prev => prev.map(msg => 
+        msg.id === editingMessageId
+          ? { ...msg, content: originalContent || msg.content, edited_at: msg.edited_at }
+          : msg
+      ));
+      setEditingMessageId(editingMessageId);
+      setEditingMessageContent(editingMessageContent);
+      toast.error('Failed to edit message');
+    }
+  }, [editingMessageId, editingMessageContent, universe?.id, messages]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingMessageContent('');
+  }, []);
+
+  // =====================================================
+  // MESSAGE DELETION
+  // =====================================================
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    if (!universe?.id) return;
+
+    if (!confirm('Are you sure you want to delete this message?')) return;
+
+    // Store original message for potential revert
+    const originalMessage = messages.find(m => m.id === messageId);
+    if (!originalMessage) return;
+
+    const deletedAt = new Date().toISOString();
+
+    // Optimistic update: immediately hide message
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId
+        ? { ...msg, deleted_at: deletedAt, content: '[Message deleted]' }
+        : msg
+    ));
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ deleted_at: deletedAt })
+        .eq('id', messageId)
+        .eq('sender_profile_universe_id', universe.id); // Only allow deleting own messages
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Error deleting message:', error);
+      // Revert optimistic update on error
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId ? originalMessage : msg
+      ));
+      toast.error('Failed to delete message');
+    }
+  }, [universe?.id, messages]);
+
+  // =====================================================
+  // REPLY TO MESSAGE
+  // =====================================================
+  const handleReplyToMessage = useCallback((message: Message) => {
+    setReplyingToMessageId(message.id);
+    // Focus on message input
+    setTimeout(() => {
+      const textarea = document.querySelector('textarea[placeholder="Type a message..."]') as HTMLTextAreaElement;
+      textarea?.focus();
+    }, 100);
+  }, []);
+
+  const handleCancelReply = useCallback(() => {
+    setReplyingToMessageId(null);
+  }, []);
+
+  // =====================================================
+  // CONVERSATION ACTIONS
+  // =====================================================
+  const handlePinConversation = useCallback(async (conversationId: string, pin: boolean) => {
+    if (!universe?.id) return;
+
+    // Optimistic update: immediately update UI
+    setConversations(prev => prev.map(conv => {
+      if (conv.id !== conversationId) return conv;
+      const participant = conv.participants.find(p => p.profile_universe_id === universe.id);
+      if (!participant) return conv;
+      return {
+        ...conv,
+        participants: conv.participants.map(p =>
+          p.profile_universe_id === universe.id
+            ? { ...p, is_pinned: pin }
+            : p
+        )
+      };
+    }));
+
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .update({ is_pinned: pin })
+        .eq('conversation_id', conversationId)
+        .eq('profile_universe_id', universe.id);
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Error pinning conversation:', error);
+      // Revert optimistic update on error
+      setConversations(prev => prev.map(conv => {
+        if (conv.id !== conversationId) return conv;
+        return {
+          ...conv,
+          participants: conv.participants.map(p =>
+            p.profile_universe_id === universe.id
+              ? { ...p, is_pinned: !pin }
+              : p
+          )
+        };
+      }));
+      toast.error('Failed to update conversation');
+    }
+  }, [universe?.id]);
+
+  const handleArchiveConversation = useCallback(async (conversationId: string, archive: boolean) => {
+    if (!universe?.id) return;
+
+    // Optimistic update: immediately update UI
+    setConversations(prev => prev.map(conv => {
+      if (conv.id !== conversationId) return conv;
+      return {
+        ...conv,
+        participants: conv.participants.map(p =>
+          p.profile_universe_id === universe.id
+            ? { ...p, is_archived: archive }
+            : p
+        )
+      };
+    }));
+
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .update({ is_archived: archive })
+        .eq('conversation_id', conversationId)
+        .eq('profile_universe_id', universe.id);
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Error archiving conversation:', error);
+      // Revert optimistic update on error
+      setConversations(prev => prev.map(conv => {
+        if (conv.id !== conversationId) return conv;
+        return {
+          ...conv,
+          participants: conv.participants.map(p =>
+            p.profile_universe_id === universe.id
+              ? { ...p, is_archived: !archive }
+              : p
+          )
+        };
+      }));
+      toast.error('Failed to update conversation');
+    }
+  }, [universe?.id]);
+
+  const handleMuteConversation = useCallback(async (conversationId: string, mute: boolean) => {
+    if (!universe?.id) return;
+
+    // Optimistic update: immediately update UI
+    setConversations(prev => prev.map(conv => {
+      if (conv.id !== conversationId) return conv;
+      return {
+        ...conv,
+        participants: conv.participants.map(p =>
+          p.profile_universe_id === universe.id
+            ? { ...p, is_muted: mute }
+            : p
+        )
+      };
+    }));
+
+    try {
+      const { error } = await supabase
+        .from('conversation_participants')
+        .update({ is_muted: mute })
+        .eq('conversation_id', conversationId)
+        .eq('profile_universe_id', universe.id);
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Error muting conversation:', error);
+      // Revert optimistic update on error
+      setConversations(prev => prev.map(conv => {
+        if (conv.id !== conversationId) return conv;
+        return {
+          ...conv,
+          participants: conv.participants.map(p =>
+            p.profile_universe_id === universe.id
+              ? { ...p, is_muted: !mute }
+              : p
+          )
+        };
+      }));
+      toast.error('Failed to update conversation');
+    }
+  }, [universe?.id]);
+
+  // =====================================================
   // TYPING INDICATOR
   // =====================================================
   const handleTyping = useCallback(() => {
@@ -1131,8 +1619,17 @@ export default function RealtimeMessenger() {
       return;
     }
 
-    // Set auth for Realtime Authorization
-    supabase.realtime.setAuth();
+    // Set auth for Realtime Authorization with session token
+    if (session?.access_token) {
+      supabase.realtime.setAuth(session.access_token);
+    } else {
+      // Fallback: get session from Supabase client
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.access_token) {
+          supabase.realtime.setAuth(session.access_token);
+        }
+      });
+    }
 
     const channel = supabase
       .channel(`conversation:${selectedConversation.id}:messages`, {
@@ -1216,10 +1713,12 @@ export default function RealtimeMessenger() {
           edited_at: messageData.edited_at,
           deleted_at: messageData.deleted_at,
           reply_to_message_id: messageData.reply_to_message_id,
+          read_at: messageData.read_at,
           metadata: metadata || {},
           attachments: messageData.attachments || [],
           sender_profile: senderProfile,
-          reactions: []
+          reactions: [],
+          reply_to_message: undefined // Will be populated from messages array if needed
         };
         
         console.log('[RealtimeMessenger] Adding message from realtime:', {
@@ -1272,6 +1771,18 @@ export default function RealtimeMessenger() {
         }
       })
       // Subscribe to typing indicators
+      // Subscribe to message reactions
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'message_reactions',
+        filter: `message_id=eq.${selectedConversation.id}`
+      }, () => {
+        // Reload messages to get updated reactions
+        if (selectedConversation.id) {
+          loadMessages(selectedConversation.id);
+        }
+      })
       .on('broadcast', { event: 'typing' }, (payload) => {
         const { user_id, display_name, is_typing, timestamp } = payload.payload;
         
@@ -1316,13 +1827,16 @@ export default function RealtimeMessenger() {
   useEffect(() => {
     if (!universe?.id) return;
 
-    // Set auth for Realtime Authorization
+    // Set auth for Realtime Authorization with session token
     const setRealtimeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
       if (session?.access_token) {
         supabase.realtime.setAuth(session.access_token);
       } else {
-        supabase.realtime.setAuth();
+        // Fallback: get session from Supabase client
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.access_token) {
+          supabase.realtime.setAuth(currentSession.access_token);
+        }
       }
     };
     setRealtimeAuth();
@@ -1371,7 +1885,7 @@ export default function RealtimeMessenger() {
       channel.unsubscribe();
       presenceChannelRef.current = null;
     };
-  }, [universe?.id, universe?.display_name]);
+  }, [universe?.id, universe?.display_name, session]);
 
   // =====================================================
   // AUTO-CLEANUP STALE TYPING INDICATORS
@@ -1403,8 +1917,19 @@ export default function RealtimeMessenger() {
   useEffect(() => {
     if (!universe?.id || !user?.id) return;
 
-    // Set auth for Realtime Authorization
-    supabase.realtime.setAuth();
+    // Set auth for Realtime Authorization with session token
+    const setRealtimeAuth = async () => {
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token);
+      } else {
+        // Fallback: get session from Supabase client
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.access_token) {
+          supabase.realtime.setAuth(currentSession.access_token);
+        }
+      }
+    };
+    setRealtimeAuth();
 
     // Subscribe to conversation list updates for this universe
     const conversationsListChannel = supabase
@@ -1436,13 +1961,16 @@ export default function RealtimeMessenger() {
       console.log('[RealtimeMessenger] Unsubscribing from conversations list channel');
       supabase.removeChannel(conversationsListChannel);
     };
-  }, [universe?.id, user?.id, loadConversations]);
+  }, [universe?.id, user?.id, loadConversations, session]);
 
   // =====================================================
-  // LOAD DATA ON MOUNT
+  // LOAD DATA ON MOUNT AND WHEN UNIVERSE CHANGES
   // =====================================================
   useEffect(() => {
     if (universe?.id) {
+      // Clear selected conversation when universe changes
+      setSelectedConversation(null);
+      // Reload conversations for new universe
       loadConversations();
     }
   }, [universe?.id, loadConversations]);
@@ -1494,12 +2022,8 @@ export default function RealtimeMessenger() {
         )
       );
     } else {
-      // 'all' - exclude archived
-      filtered = filtered.filter(c => 
-        !c.participants.some(p => 
-          p.profile_universe_id === universe?.id && p.is_archived
-        )
-      );
+      // 'all' - show all conversations including archived
+      // Don't filter out archived conversations - show everything
     }
 
     // Apply search
@@ -1601,20 +2125,56 @@ export default function RealtimeMessenger() {
     searchUsersForMessage(value);
   }, [searchUsersForMessage]);
 
-  // Start a new conversation with a user
-  const startConversation = useCallback(async (recipientUniverseId: string) => {
+  // Start a new conversation with a user or group
+  const startConversation = useCallback(async (recipientUniverseId?: string) => {
     if (!universe?.id || !user?.id) {
       toast.error('Please select a universe first');
       return;
     }
 
     try {
-      // Use direct database operations to get or create conversation
-      const { getOrCreateConversation } = await import('@/lib/messenger/conversationUtils');
-      const conversationId = await getOrCreateConversation(
-        universe.id,
-        recipientUniverseId
-      );
+      let conversationId: string;
+
+      if (isGroupMode && selectedRecipients.length > 0) {
+        // Create group conversation
+        const participantIds = [universe.id, ...selectedRecipients.map(r => r.id)];
+        
+        // Create group conversation
+        const { data: newConversation, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            type: 'group',
+            name: selectedRecipients.map(r => r.display_name).join(', '),
+            metadata: { participant_count: participantIds.length }
+          })
+          .select()
+          .single();
+
+        if (convError) throw convError;
+        conversationId = newConversation.id;
+
+        // Add all participants
+        const participants = participantIds.map(pid => ({
+          conversation_id: conversationId,
+          profile_universe_id: pid
+        }));
+
+        const { error: participantsError } = await supabase
+          .from('conversation_participants')
+          .insert(participants);
+
+        if (participantsError) throw participantsError;
+      } else if (recipientUniverseId) {
+        // Create direct conversation
+        const { getOrCreateConversation } = await import('@/lib/messenger/conversationUtils');
+        conversationId = await getOrCreateConversation(
+          universe.id,
+          recipientUniverseId
+        );
+      } else {
+        toast.error('Please select a recipient');
+        return;
+      }
 
       // Check if conversation is already in our list
       const existingConversation = conversations.find(c => c.id === conversationId);
@@ -1632,12 +2192,14 @@ export default function RealtimeMessenger() {
       setIsNewMessageDialogOpen(false);
       setNewMessageSearchQuery('');
       setNewMessageSearchResults([]);
+      setIsGroupMode(false);
+      setSelectedRecipients([]);
       toast.success('Conversation started');
     } catch (error: any) {
       console.error('Error starting conversation:', error);
       toast.error(error.message || 'Failed to start conversation');
     }
-  }, [universe?.id, user?.id, conversations, loadConversations, setSearchParams]);
+  }, [universe?.id, user?.id, conversations, loadConversations, setSearchParams, isGroupMode, selectedRecipients]);
 
   // =====================================================
   // LOADING STATE (After all hooks)
@@ -1684,95 +2246,147 @@ export default function RealtimeMessenger() {
         
         {/* Conversations List */}
         <div className={cn(
-          "flex-shrink-0 border-r bg-card flex flex-col transition-transform duration-300 ease-in-out",
+          "flex-shrink-0 border-r bg-card flex flex-col transition-all duration-300 ease-in-out",
           "w-full md:w-96",
           "absolute md:relative inset-0 z-20 md:z-auto",
-          showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          isSidebarCollapsed && "md:w-16"
         )}>
           {/* Header */}
-          <div className="p-3 md:p-4 border-b bg-card/95 backdrop-blur">
-            <div className="flex items-center justify-between mb-3 md:mb-4">
-              <div className="flex items-center gap-2">
-                {/* Mobile menu button */}
+          <div className={cn(
+            "p-3 md:p-4 border-b bg-card/95 backdrop-blur",
+            isSidebarCollapsed && "md:p-2"
+          )}>
+            {!isSidebarCollapsed ? (
+              <div className="flex items-center justify-between mb-3 md:mb-4">
+                <div className="flex items-center gap-2">
+                  {/* Mobile menu button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 md:hidden"
+                    onClick={() => setShowSidebar(false)}
+                    title="Close sidebar"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold tracking-tight">Messages</h2>
+                    <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+                      {filteredConversations.length} {filteredConversations.length === 1 ? 'conversation' : 'conversations'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {/* Universe Switcher */}
+                  <UniverseSwitcher />
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className="h-8 w-8 md:h-9 md:w-9"
+                    onClick={handleNewMessage}
+                    title="New message"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                  {/* Collapse button (desktop only) */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 md:h-9 md:w-9 hidden md:flex"
+                    onClick={() => setIsSidebarCollapsed(true)}
+                    title="Collapse sidebar"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                {/* Expand button */}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 md:hidden"
-                  onClick={() => setShowSidebar(false)}
-                  title="Close sidebar"
+                  className="h-8 w-8"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  title="Expand sidebar"
                 >
-                  <X className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
-                <div>
-                  <h2 className="text-lg md:text-xl font-bold tracking-tight">Messages</h2>
-                  <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
-                    {filteredConversations.length} {filteredConversations.length === 1 ? 'conversation' : 'conversations'}
-                  </p>
-                </div>
+                {/* New message button when collapsed */}
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleNewMessage}
+                  title="New message"
+                >
+                  <UserPlus className="h-4 w-4" />
+                </Button>
               </div>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-8 w-8 md:h-9 md:w-9"
-                onClick={handleNewMessage}
-                title="New message"
-              >
-                <UserPlus className="h-4 w-4" />
-              </Button>
-            </div>
+            )}
             
-            {/* Search */}
-            <div className="relative mb-2 md:mb-3">
-              <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 h-3.5 md:h-4 w-3.5 md:w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search conversations..."
-                className="pl-7 md:pl-9 h-8 md:h-9 text-sm md:text-base bg-background/50 border-border/50 focus-visible:ring-2"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+            {/* Search - Hidden when collapsed */}
+            {!isSidebarCollapsed && (
+              <div className="relative mb-2 md:mb-3">
+                <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 h-3.5 md:h-4 w-3.5 md:w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search conversations..."
+                  className="pl-7 md:pl-9 h-8 md:h-9 text-sm md:text-base bg-background/50 border-border/50 focus-visible:ring-2"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
 
-            {/* Filters */}
-            <div className="flex gap-1 md:gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-              {['all', 'unread', 'pinned', 'archived'].map((filter) => (
-                <Button
-                  key={filter}
-                  variant={filterType === filter ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setFilterType(filter as any)}
-                  className={cn(
-                    "h-6 md:h-7 text-[10px] md:text-xs font-medium transition-all whitespace-nowrap flex-shrink-0",
-                    filterType === filter 
-                      ? "bg-primary text-primary-foreground shadow-sm" 
-                      : "hover:bg-muted/50"
-                  )}
-                >
-                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                </Button>
-              ))}
-            </div>
+            {/* Filters - Hidden when collapsed */}
+            {!isSidebarCollapsed && (
+              <div className="flex gap-1 md:gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                {['all', 'unread', 'pinned', 'archived'].map((filter) => (
+                  <Button
+                    key={filter}
+                    variant={filterType === filter ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setFilterType(filter as any)}
+                    className={cn(
+                      "h-6 md:h-7 text-[10px] md:text-xs font-medium transition-all whitespace-nowrap flex-shrink-0",
+                      filterType === filter 
+                        ? "bg-primary text-primary-foreground shadow-sm" 
+                        : "hover:bg-muted/50"
+                    )}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Conversations List */}
           <ScrollArea className="flex-1">
             {filteredConversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                <div className="rounded-full bg-muted p-6 mb-4">
-                  <MessageSquare className="h-8 w-8 text-muted-foreground" />
+              !isSidebarCollapsed ? (
+                <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                  <div className="rounded-full bg-muted p-6 mb-4">
+                    <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-semibold mb-1">No conversations</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {searchQuery ? 'No conversations match your search' : 'Start a new conversation to get started'}
+                  </p>
+                  {!searchQuery && (
+                    <Button onClick={handleNewMessage}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      New Message
+                    </Button>
+                  )}
                 </div>
-                <h3 className="font-semibold mb-1">No conversations</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {searchQuery ? 'No conversations match your search' : 'Start a new conversation to get started'}
-                </p>
-                {!searchQuery && (
-                  <Button onClick={handleNewMessage}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    New Message
-                  </Button>
-                )}
-              </div>
+              ) : null
             ) : (
-              <div className="p-1 md:p-2 space-y-0.5">
+              <div className={cn(
+                "p-1 md:p-2 space-y-0.5",
+                isSidebarCollapsed && "md:p-2 md:space-y-2"
+              )}>
                 {filteredConversations.map((conversation) => {
                 const otherParticipants = conversation.participants.filter(
                   p => p.profile_universe_id !== universe.id
@@ -1839,79 +2453,116 @@ export default function RealtimeMessenger() {
                         }
                       }}
                       className={cn(
-                        "w-full p-2 md:p-3 rounded-lg md:rounded-xl text-left transition-all group",
-                        "hover:bg-accent/50 active:scale-[0.98]",
+                        "w-full transition-all group",
+                        isSidebarCollapsed 
+                          ? "md:p-2 md:flex md:justify-center" 
+                          : "p-2 md:p-3 rounded-lg md:rounded-xl text-left hover:bg-accent/50 active:scale-[0.98]",
                         selectedConversation?.id === conversation.id 
-                          ? "bg-accent shadow-sm border border-border/50" 
+                          ? isSidebarCollapsed
+                            ? "md:bg-accent/30"
+                            : "bg-accent shadow-sm border border-border/50" 
                           : "hover:border-border/30"
                       )}
+                      title={isSidebarCollapsed ? displayName : undefined}
                     >
-                      <div className="flex items-start gap-2 md:gap-3">
+                      {isSidebarCollapsed ? (
+                        // Collapsed view: Only avatar
                         <div className="relative flex-shrink-0">
                           {isGroup || isShow ? (
-                            // Group/Show icon with participant count
-                            <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center ring-2 ring-primary/10">
-                              {isShow ? (
-                                <Users className="h-5 w-5 md:h-6 md:w-6 text-primary" />
-                              ) : (
-                                <Users className="h-5 w-5 md:h-6 md:w-6 text-primary" />
-                              )}
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center ring-2 ring-primary/10">
+                              <Users className="h-5 w-5 text-primary" />
                               {participantCount > 2 && (
-                                <span className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[9px] md:text-[10px] font-semibold rounded-full h-4 w-4 md:h-5 md:w-5 flex items-center justify-center ring-2 ring-background">
+                                <span className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[9px] font-semibold rounded-full h-4 w-4 flex items-center justify-center ring-2 ring-background">
                                   {participantCount}
                                 </span>
                               )}
                             </div>
                           ) : (
-                            // Direct message avatar
-                            <Avatar className="h-10 w-10 md:h-12 md:w-12 ring-2 ring-background">
+                            <Avatar className="h-10 w-10 ring-2 ring-background">
                               <AvatarImage src={participant?.avatar_url} />
-                              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-sm md:text-base">
+                              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-sm">
                                 {participant?.display_name?.charAt(0) || '?'}
                               </AvatarFallback>
                             </Avatar>
                           )}
                           {isOnline && !isGroup && !isShow && (
-                            <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 rounded-full border-2 border-background ring-1 ring-green-500/20" />
+                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background ring-1 ring-green-500/20" />
+                          )}
+                          {conversation.unread_count > 0 && (
+                            <div className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[10px] font-semibold rounded-full h-5 w-5 flex items-center justify-center ring-2 ring-background">
+                              {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
+                            </div>
                           )}
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1 md:gap-2 mb-0.5 md:mb-1">
-                            <p className={cn(
-                              "font-semibold text-xs md:text-sm truncate",
-                              conversation.unread_count > 0 && "font-bold"
-                            )}>
-                              {displayName}
-                            </p>
-                            {conversation.last_message_at && (
-                              <span className="text-[10px] md:text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                                {formatDistanceToNow(new Date(conversation.last_message_at), {
-                                  addSuffix: false
-                                })}
-                              </span>
+                      ) : (
+                        // Expanded view: Full conversation card
+                        <div className="flex items-start gap-2 md:gap-3">
+                          <div className="relative flex-shrink-0">
+                            {isGroup || isShow ? (
+                              // Group/Show icon with participant count
+                              <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center ring-2 ring-primary/10">
+                                {isShow ? (
+                                  <Users className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                                ) : (
+                                  <Users className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                                )}
+                                {participantCount > 2 && (
+                                  <span className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[9px] md:text-[10px] font-semibold rounded-full h-4 w-4 md:h-5 md:w-5 flex items-center justify-center ring-2 ring-background">
+                                    {participantCount}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              // Direct message avatar
+                              <Avatar className="h-10 w-10 md:h-12 md:w-12 ring-2 ring-background">
+                                <AvatarImage src={participant?.avatar_url} />
+                                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-sm md:text-base">
+                                  {participant?.display_name?.charAt(0) || '?'}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            {isOnline && !isGroup && !isShow && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 rounded-full border-2 border-background ring-1 ring-green-500/20" />
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 md:gap-2">
-                            <p className={cn(
-                              "text-xs md:text-sm truncate flex-1",
-                              conversation.unread_count > 0 
-                                ? "text-foreground font-medium" 
-                                : "text-muted-foreground"
-                            )}>
-                              {conversation.last_message?.content || 'No messages yet'}
-                            </p>
-                            {conversation.unread_count > 0 && (
-                              <Badge 
-                                variant="default" 
-                                className="ml-auto flex-shrink-0 h-4 md:h-5 min-w-[18px] md:min-w-[20px] px-1 md:px-1.5 text-[10px] md:text-xs font-semibold"
-                              >
-                                {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
-                              </Badge>
-                            )}
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 md:gap-2 mb-0.5 md:mb-1">
+                              <p className={cn(
+                                "font-semibold text-xs md:text-sm truncate",
+                                conversation.unread_count > 0 && "font-bold"
+                              )}>
+                                {displayName}
+                              </p>
+                              {conversation.last_message_at && (
+                                <span className="text-[10px] md:text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                  {formatDistanceToNow(new Date(conversation.last_message_at), {
+                                    addSuffix: false
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 md:gap-2">
+                              <p className={cn(
+                                "text-xs md:text-sm truncate flex-1",
+                                conversation.unread_count > 0 
+                                  ? "text-foreground font-medium" 
+                                  : "text-muted-foreground"
+                              )}>
+                                {conversation.last_message?.content || 'No messages yet'}
+                              </p>
+                              {conversation.unread_count > 0 && (
+                                <Badge 
+                                  variant="default" 
+                                  className="ml-auto flex-shrink-0 h-4 md:h-5 min-w-[18px] md:min-w-[20px] px-1 md:px-1.5 text-[10px] md:text-xs font-semibold"
+                                >
+                                  {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </button>
                   );
                 })}
@@ -1922,6 +2573,20 @@ export default function RealtimeMessenger() {
 
         {/* Messages Area */}
         <div className="flex-1 flex flex-col bg-background relative">
+          {/* Toggle Sidebar Button (when collapsed, show on main content) */}
+          {isSidebarCollapsed && (
+            <div className="absolute left-2 top-4 z-10 md:block hidden">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 bg-card border border-border shadow-sm"
+                onClick={() => setIsSidebarCollapsed(false)}
+                title="Expand sidebar"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
           {selectedConversation ? (
             <>
               {/* Header */}
@@ -1936,6 +2601,18 @@ export default function RealtimeMessenger() {
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                  {/* Expand sidebar button (desktop, when collapsed) */}
+                  {isSidebarCollapsed && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 hidden md:flex flex-shrink-0"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      title="Expand sidebar"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  )}
                   {(() => {
                     const otherParticipants = selectedConversation.participants.filter(
                       p => p.profile_universe_id !== universe.id
@@ -2005,20 +2682,135 @@ export default function RealtimeMessenger() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-9 w-9"
-                    onClick={() => toast.info('Conversation settings coming soon')}
-                    title="Conversation settings"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
+                  {(() => {
+                    const otherParticipants = selectedConversation.participants.filter(
+                      p => p.profile_universe_id !== universe.id
+                    );
+                    const otherParticipant = otherParticipants[0];
+                    const participant = otherParticipant?.profile_universe || null;
+                    const isGroup = selectedConversation.type === 'group';
+                    const isShow = selectedConversation.type === 'show';
+                    const canVideoCall = !isGroup && !isShow && participant;
+
+                    return (
+                      <>
+                        {canVideoCall && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-9 w-9"
+                            onClick={async () => {
+                              try {
+                                // Get user_id from profile_universe
+                                const { data: profileUniverse, error } = await supabase
+                                  .from('profile_universes')
+                                  .select('user_id')
+                                  .eq('id', participant.id)
+                                  .single();
+
+                                if (error || !profileUniverse) {
+                                  toast.error('Unable to start video call');
+                                  return;
+                                }
+
+                                setVideoCallParticipant({
+                                  userId: profileUniverse.user_id,
+                                  universeId: participant.id,
+                                  userName: participant.display_name,
+                                  userAvatar: participant.avatar_url || undefined
+                                });
+                                setIsVideoCallOpen(true);
+                              } catch (error) {
+                                console.error('Error starting video call:', error);
+                                toast.error('Unable to start video call');
+                              }
+                            }}
+                            title="Start video call"
+                          >
+                            <Video className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-9 w-9"
+                              title="Conversation options"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const isPinned = selectedConversation.participants.find(
+                                  p => p.profile_universe_id === universe.id
+                                )?.is_pinned;
+                                handlePinConversation(selectedConversation.id, !isPinned);
+                              }}
+                            >
+                              <Pin className="h-4 w-4 mr-2" />
+                              {selectedConversation.participants.find(
+                                p => p.profile_universe_id === universe.id
+                              )?.is_pinned ? 'Unpin' : 'Pin'} Conversation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const isMuted = selectedConversation.participants.find(
+                                  p => p.profile_universe_id === universe.id
+                                )?.is_muted;
+                                handleMuteConversation(selectedConversation.id, !isMuted);
+                              }}
+                            >
+                              {selectedConversation.participants.find(
+                                p => p.profile_universe_id === universe.id
+                              )?.is_muted ? (
+                                <>
+                                  <Bell className="h-4 w-4 mr-2" />
+                                  Unmute
+                                </>
+                              ) : (
+                                <>
+                                  <BellOff className="h-4 w-4 mr-2" />
+                                  Mute
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const isArchived = selectedConversation.participants.find(
+                                  p => p.profile_universe_id === universe.id
+                                )?.is_archived;
+                                handleArchiveConversation(selectedConversation.id, !isArchived);
+                              }}
+                            >
+                              <Archive className="h-4 w-4 mr-2" />
+                              {selectedConversation.participants.find(
+                                p => p.profile_universe_id === universe.id
+                              )?.is_archived ? 'Unarchive' : 'Archive'} Conversation
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
               {/* Messages */}
               <ScrollArea className="flex-1">
+                {/* Message Search */}
+                {selectedConversation && (
+                  <div className="p-3 border-b">
+                    <Input
+                      placeholder="Search messages..."
+                      value={messageSearchQuery}
+                      onChange={(e) => setMessageSearchQuery(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                )}
                 <div className="p-6 space-y-4">
                   {messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full py-12">
@@ -2028,9 +2820,26 @@ export default function RealtimeMessenger() {
                       <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
                     </div>
                   ) : (
-                    messages.map((message, index) => {
-                      const isMe = message.sender_profile_universe_id === universe.id;
-                      const prevMessage = index > 0 ? messages[index - 1] : null;
+                    (() => {
+                      // Filter messages by search query
+                      const filteredMessages = messageSearchQuery.trim()
+                        ? messages.filter(m => 
+                            m.content.toLowerCase().includes(messageSearchQuery.toLowerCase()) ||
+                            m.sender_profile?.display_name?.toLowerCase().includes(messageSearchQuery.toLowerCase())
+                          )
+                        : messages;
+                      
+                      if (messageSearchQuery.trim() && filteredMessages.length === 0) {
+                        return (
+                          <div key="no-results" className="flex flex-col items-center justify-center h-full py-12">
+                            <p className="text-sm text-muted-foreground">No messages found matching "{messageSearchQuery}"</p>
+                          </div>
+                        );
+                      }
+                      
+                      return filteredMessages.map((message, index) => {
+                        const isMe = message.sender_profile_universe_id === universe.id;
+                        const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
                       const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
                       const showTime = !prevMessage || 
                         (new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime()) > 300000; // 5 minutes
@@ -2051,6 +2860,8 @@ export default function RealtimeMessenger() {
                               "flex gap-3 group",
                               isMe && "flex-row-reverse"
                             )}
+                            onMouseEnter={() => setHoveredMessageId(message.id)}
+                            onMouseLeave={() => setHoveredMessageId(null)}
                           >
                             {showAvatar ? (
                               <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-background">
@@ -2071,13 +2882,74 @@ export default function RealtimeMessenger() {
                               )}
                               <div
                                 className={cn(
-                                  "rounded-2xl px-4 py-2.5 shadow-sm transition-all",
+                                  "rounded-2xl px-4 py-2.5 shadow-sm transition-all relative",
                                   "group-hover:shadow-md",
                                   isMe
                                     ? "bg-primary text-primary-foreground rounded-br-md"
                                     : "bg-card border border-border rounded-bl-md"
                                 )}
                               >
+                                {/* Reply Preview */}
+                                {message.reply_to_message_id && (() => {
+                                  const repliedTo = message.reply_to_message || messages.find(m => m.id === message.reply_to_message_id);
+                                  if (!repliedTo) return null;
+                                  const replySender = repliedTo.profile_universes || messages.find(m => m.id === message.reply_to_message_id)?.sender_profile;
+                                  return (
+                                    <div className={cn(
+                                      "mb-2 pb-2 border-l-2 pl-2 text-xs opacity-70",
+                                      isMe ? "border-primary-foreground/30" : "border-border"
+                                    )}>
+                                      <p className="font-medium">Replying to {replySender?.display_name || 'message'}</p>
+                                      <p className="truncate">{repliedTo.content}</p>
+                                    </div>
+                                  );
+                                })()}
+                                
+                                {/* Message Actions (hover) */}
+                                {hoveredMessageId === message.id && (
+                                  <div className={cn(
+                                    "absolute top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                                    isMe ? "left-2" : "right-2"
+                                  )}>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <MoreVertical className="h-3 w-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align={isMe ? "start" : "end"}>
+                                        {isMe && (
+                                          <>
+                                            <DropdownMenuItem onClick={() => handleEditMessage(message)}>
+                                              <Edit className="h-4 w-4 mr-2" />
+                                              Edit
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem 
+                                              onClick={() => handleDeleteMessage(message.id)}
+                                              className="text-destructive"
+                                            >
+                                              <Trash2 className="h-4 w-4 mr-2" />
+                                              Delete
+                                            </DropdownMenuItem>
+                                          </>
+                                        )}
+                                        <DropdownMenuItem onClick={() => handleReplyToMessage(message)}>
+                                          <Reply className="h-4 w-4 mr-2" />
+                                          Reply
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => setShowReactionPicker(message.id)}>
+                                          <Smile className="h-4 w-4 mr-2" />
+                                          Add Reaction
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                )}
                                 {/* Attachments */}
                                 {(() => {
                                   const messageAttachments = message.metadata?.attachments || [];
@@ -2134,35 +3006,115 @@ export default function RealtimeMessenger() {
                                 )}
                                 
                                 {/* Message Content */}
-                                {message.content && message.content !== '📎' && (
-                                  <p className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                    {message.content}
-                                  </p>
+                                {editingMessageId === message.id ? (
+                                  <div className="space-y-2">
+                                    <Textarea
+                                      value={editingMessageContent}
+                                      onChange={(e) => setEditingMessageContent(e.target.value)}
+                                      className="min-h-[60px] text-xs md:text-sm"
+                                      autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={handleSaveEdit}
+                                        disabled={!editingMessageContent.trim()}
+                                      >
+                                        Save
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={handleCancelEdit}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  message.content && message.content !== '📎' && (
+                                    <p className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                      {message.content}
+                                    </p>
+                                  )
                                 )}
                               </div>
                               
                               {/* Reactions */}
-                              {message.reactions && message.reactions.length > 0 && (
-                                <div className="flex gap-1 mt-1.5">
-                                  {message.reactions.map((reaction) => (
-                                    <span key={reaction.id} className="text-xs bg-muted px-2 py-0.5 rounded-full">
-                                      {reaction.emoji}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1 mt-1.5">
+                                {message.reactions && message.reactions.length > 0 && (
+                                  <div className="flex gap-1 flex-wrap">
+                                    {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => {
+                                      const reactionsWithEmoji = message.reactions?.filter(r => r.emoji === emoji) || [];
+                                      const hasUserReaction = reactionsWithEmoji.some(r => r.profile_universe_id === universe.id);
+                                      return (
+                                        <button
+                                          key={emoji}
+                                          onClick={() => handleAddReaction(message.id, emoji)}
+                                          className={cn(
+                                            "text-xs bg-muted px-2 py-0.5 rounded-full hover:bg-muted/80 transition-colors flex items-center gap-1",
+                                            hasUserReaction && "ring-2 ring-primary"
+                                          )}
+                                        >
+                                          <span>{emoji}</span>
+                                          <span className="text-[10px] opacity-70">{reactionsWithEmoji.length}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {showReactionPicker === message.id && (
+                                  <div className="absolute bottom-full left-0 mb-2 bg-card border border-border rounded-lg p-2 shadow-lg z-10">
+                                    <div className="flex gap-1">
+                                      {['❤️', '👍', '👏', '🎉', '🔥', '😄', '😮', '😢'].map((emoji) => (
+                                        <button
+                                          key={emoji}
+                                          onClick={() => {
+                                            handleAddReaction(message.id, emoji);
+                                            setShowReactionPicker(null);
+                                          }}
+                                          className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-muted"
+                                        >
+                                          {emoji}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {hoveredMessageId === message.id && !showReactionPicker && (
+                                  <button
+                                    onClick={() => setShowReactionPicker(message.id)}
+                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                                  >
+                                    <Smile className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
 
-                              <span className="text-xs text-muted-foreground mt-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {formatDistanceToNow(new Date(message.created_at), {
-                                  addSuffix: true
-                                })}
-                                {message.edited_at && ' (edited)'}
-                              </span>
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="text-xs text-muted-foreground px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {formatDistanceToNow(new Date(message.created_at), {
+                                    addSuffix: true
+                                  })}
+                                  {message.edited_at && ' (edited)'}
+                                </span>
+                                {/* Read Receipt */}
+                                {isMe && (
+                                  <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {message.read_at ? (
+                                      <CheckCheck className="h-3 w-3 text-primary" title="Read" />
+                                    ) : (
+                                      <Check className="h-3 w-3" title="Delivered" />
+                                    )}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
                       );
-                    })
+                    });
+                    })()
                   )}
                   <div ref={messagesEndRef} />
                 </div>
@@ -2184,6 +3136,30 @@ export default function RealtimeMessenger() {
 
               {/* Input */}
               <div className="border-t p-2 md:p-4 bg-card/50 backdrop-blur">
+                {/* Reply Preview */}
+                {replyingToMessageId && (() => {
+                  const replyingTo = messages.find(m => m.id === replyingToMessageId);
+                  if (!replyingTo) return null;
+                  const isReplyingToMe = replyingTo.sender_profile_universe_id === universe.id;
+                  return (
+                    <div className="mb-2 p-2 bg-muted/50 rounded-lg border-l-2 border-primary flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Replying to {isReplyingToMe ? 'yourself' : replyingTo.sender_profile?.display_name || 'message'}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{replyingTo.content}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 flex-shrink-0"
+                        onClick={handleCancelReply}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  );
+                })()}
                 {/* Attachments Preview */}
                 {attachments.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-1.5 md:gap-2">
@@ -2319,23 +3295,72 @@ export default function RealtimeMessenger() {
       </div>
 
       {/* New Message Dialog */}
-      <Dialog open={isNewMessageDialogOpen} onOpenChange={setIsNewMessageDialogOpen}>
+      <Dialog open={isNewMessageDialogOpen} onOpenChange={(open) => {
+        setIsNewMessageDialogOpen(open);
+        if (!open) {
+          setIsGroupMode(false);
+          setSelectedRecipients([]);
+          setNewMessageSearchQuery('');
+          setNewMessageSearchResults([]);
+        }
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>New Message</DialogTitle>
             <DialogDescription>
-              Search for a user to start a conversation
+              {isGroupMode ? 'Create a group conversation' : 'Search for a user to start a conversation'}
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 mt-4">
+            {/* Toggle Group Mode */}
+            <div className="flex items-center justify-between p-2 border rounded-lg">
+              <div>
+                <p className="text-sm font-medium">Group Conversation</p>
+                <p className="text-xs text-muted-foreground">Message multiple people at once</p>
+              </div>
+              <Button
+                variant={isGroupMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setIsGroupMode(!isGroupMode);
+                  setSelectedRecipients([]);
+                }}
+              >
+                {isGroupMode ? 'On' : 'Off'}
+              </Button>
+            </div>
+
+            {/* Selected Recipients (Group Mode) */}
+            {isGroupMode && selectedRecipients.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Selected ({selectedRecipients.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedRecipients.map((recipient) => (
+                    <div
+                      key={recipient.id}
+                      className="flex items-center gap-2 bg-muted px-2 py-1 rounded-full text-sm"
+                    >
+                      <span>{recipient.display_name || recipient.handle}</span>
+                      <button
+                        onClick={() => setSelectedRecipients(prev => prev.filter(r => r.id !== recipient.id))}
+                        className="hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Search Input */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={newMessageSearchQuery}
                 onChange={(e) => handleNewMessageSearchChange(e.target.value)}
-                placeholder="Search by name or handle..."
+                placeholder={isGroupMode ? "Search to add participants..." : "Search by name or handle..."}
                 className="pl-9"
                 autoFocus
               />
@@ -2357,10 +3382,19 @@ export default function RealtimeMessenger() {
             {!isSearchingUsers && newMessageSearchResults.length > 0 && (
               <ScrollArea className="max-h-[400px]">
                 <div className="space-y-1">
-                  {newMessageSearchResults.map((user) => (
+                  {newMessageSearchResults
+                    .filter(user => !selectedRecipients.some(r => r.id === user.id))
+                    .map((user) => (
                     <button
                       key={user.id}
-                      onClick={() => startConversation(user.id)}
+                      onClick={() => {
+                        if (isGroupMode) {
+                          setSelectedRecipients(prev => [...prev, user]);
+                          setNewMessageSearchQuery('');
+                        } else {
+                          startConversation(user.id);
+                        }
+                      }}
                       className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-accent transition-colors text-left"
                     >
                       <Avatar className="h-10 w-10">
@@ -2377,20 +3411,49 @@ export default function RealtimeMessenger() {
                           @{user.handle}
                         </div>
                       </div>
+                      {isGroupMode && (
+                        <Button size="sm" variant="outline">
+                          Add
+                        </Button>
+                      )}
                     </button>
                   ))}
                 </div>
               </ScrollArea>
             )}
 
-            {newMessageSearchQuery.length < 2 && (
+            {newMessageSearchQuery.length < 2 && !isGroupMode && (
               <div className="text-center py-8 text-muted-foreground text-sm">
                 Type at least 2 characters to search
               </div>
             )}
+
+            {/* Create Group Button */}
+            {isGroupMode && selectedRecipients.length > 0 && (
+              <Button
+                onClick={() => startConversation()}
+                className="w-full"
+                disabled={selectedRecipients.length === 0}
+              >
+                Create Group ({selectedRecipients.length} {selectedRecipients.length === 1 ? 'person' : 'people'})
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Video Call Dialog */}
+      {videoCallParticipant && selectedConversation && (
+        <VideoCallDialog
+          open={isVideoCallOpen}
+          onOpenChange={setIsVideoCallOpen}
+          conversationId={selectedConversation.id}
+          remoteUserId={videoCallParticipant.userId}
+          remoteUniverseId={videoCallParticipant.universeId}
+          remoteUserName={videoCallParticipant.userName}
+          remoteUserAvatar={videoCallParticipant.userAvatar}
+        />
+      )}
     </>
   );
 }
