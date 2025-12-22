@@ -560,8 +560,8 @@ export default function RealtimeMessenger() {
       }
 
       // Build conversation list
-      const conversationListRaw = (participantData || [])
-        .map((p: any) => {
+      const conversationListRaw: (Conversation | null)[] = (participantData || [])
+        .map((p: any): Conversation | null => {
           const convData = conversationsMap[p.conversation_id];
           const participants = participantsByConversation[p.conversation_id] || [];
           
