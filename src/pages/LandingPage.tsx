@@ -16,7 +16,7 @@ import { toast } from '@/hooks/shared/use-toast';
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, session } = useAuth();
   
   // Form state
   const [email, setEmail] = useState('');
@@ -29,13 +29,73 @@ export default function LandingPage() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // Redirect if already logged in
+  // Check for existing session on mount (including cross-domain)
   useEffect(() => {
-    if (!authLoading && user) {
+    const checkExistingSession = async () => {
+      try {
+        // Force a session check - this will work across subdomains since they share the same Supabase instance
+        // The cross-domain storage adapter ensures cookies are shared
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        
+        if (existingSession && existingSession.user) {
+          // Session found - user is already authenticated
+          // Refresh the session to ensure it's valid
+          const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+          
+          if (refreshedSession) {
+            // Valid session - AuthContext will update and redirect will happen
+            console.log('[LandingPage] Found existing session for:', refreshedSession.user.email);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('[LandingPage] Error checking session:', err);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    // Always check for session, even if AuthContext is still loading
+    // This ensures we catch sessions from the main site immediately
+    checkExistingSession();
+  }, []); // Only run on mount
+
+  // Redirect if already logged in (either from AuthContext or direct session check)
+  useEffect(() => {
+    if (!authLoading && !checkingAuth && (user || (session && session.user))) {
       navigate('/', { replace: true });
     }
-  }, [user, authLoading, navigate]);
+  }, [user, session, authLoading, checkingAuth, navigate]);
+
+  // Handle "Continue as [user]" - use existing session
+  const handleContinueAsUser = async () => {
+    if (!session || !session.user) return;
+    
+    setIsSubmitting(true);
+    try {
+      // Refresh session to ensure it's valid and trigger AuthContext update
+      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError) throw refreshError;
+      
+      if (refreshedSession && refreshedSession.user) {
+        toast.success(`Welcome back, ${refreshedSession.user.email || 'User'}!`);
+        // Small delay to allow AuthContext to update
+        setTimeout(() => {
+          navigate('/', { replace: true });
+        }, 100);
+      } else {
+        throw new Error('No valid session found');
+      }
+    } catch (err: any) {
+      console.error('[LandingPage] Error refreshing session:', err);
+      setError('Session expired. Please sign in again.');
+      toast.error('Session expired. Please sign in again.');
+      setIsSubmitting(false);
+    }
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,15 +197,6 @@ export default function LandingPage() {
       setIsSubmitting(false);
     }
   };
-
-  // Show loading state
-  if (authLoading) {
-    return (
-      <div className="w-full flex-1 flex items-center justify-center bg-muted/30 min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   // Password reset view
   if (showForgotPassword) {
@@ -316,6 +367,22 @@ export default function LandingPage() {
     );
   }
 
+  // Show loading state while checking auth
+  if (checkingAuth || authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+          <p className="text-sm text-muted-foreground">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show "Continue as [user]" option if we have a session
+  // This handles cases where session exists but AuthContext hasn't fully updated yet
+  const showContinueOption = session && session.user && !user;
+
   // Main login/signup view
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-background">
@@ -338,6 +405,43 @@ export default function LandingPage() {
               {isSignUp ? "Get started - it's free. No credit card needed." : "Sign in to your account"}
             </p>
           </div>
+
+          {/* Continue as [user] option - like Facebook Messenger */}
+          {showContinueOption && session?.user && (
+            <div className="space-y-3">
+              <div className="p-4 bg-muted/50 border border-border rounded-lg">
+                <p className="text-sm font-medium text-foreground mb-2">
+                  Continue as {session.user.email || 'User'}?
+                </p>
+                <Button
+                  type="button"
+                  variant="gradient"
+                  size="lg"
+                  className="w-full h-12 font-semibold text-base"
+                  onClick={handleContinueAsUser}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Continuing...</span>
+                    </div>
+                  ) : (
+                    `Continue as ${session.user.email?.split('@')[0] || 'User'}`
+                  )}
+                </Button>
+              </div>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="bg-background px-2 text-muted-foreground">Or sign in with a different account</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Email/Password Form */}
           <form onSubmit={handleSubmit} className="space-y-4">

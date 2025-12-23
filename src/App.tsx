@@ -1,27 +1,39 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Toaster } from 'sonner'
-import LandingPage from './pages/LandingPage'
-import RealtimeMessenger from './pages/RealtimeMessenger'
 import { Loader2 } from 'lucide-react'
+
+// Lazy load pages for code splitting
+const LandingPage = lazy(() => import('./pages/LandingPage'))
+const RealtimeMessenger = lazy(() => import('./pages/RealtimeMessenger'))
+
+// Loading spinner component
+function LoadingSpinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  )
+}
 
 // Component that shows messenger if authenticated, landing page if not
 function RootRoute() {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner />;
   }
   
   // If authenticated, show messenger; otherwise show landing page
-  return user ? <RealtimeMessenger /> : <LandingPage />;
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      {user ? <RealtimeMessenger /> : <LandingPage />}
+    </Suspense>
+  );
 }
 
 function App() {

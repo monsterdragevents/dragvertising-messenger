@@ -11,7 +11,7 @@
  * - Direct & group conversations
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUniverse } from '@/hooks/shared/useUniverse';
@@ -68,9 +68,13 @@ import {
   Music,
   Briefcase
 } from 'lucide-react';
-import { EmojiPicker } from '@/components/shared/EmojiPicker';
-import { VideoCallDialog } from '@/components/shared/VideoCallDialog';
-import { UniverseSwitcher } from '@/components/shared/UniverseSwitcher';
+// Lazy load heavy components for code splitting
+const EmojiPicker = lazy(() => import('@/components/shared/EmojiPicker').then(module => ({ default: module.EmojiPicker })));
+const VideoCallDialog = lazy(() => import('@/components/shared/VideoCallDialog').then(module => ({ default: module.VideoCallDialog })));
+const UniverseSwitcher = lazy(() => import('@/components/shared/UniverseSwitcher').then(module => ({ default: module.UniverseSwitcher })));
+import { VirtualizedMessageList } from '@/components/shared/VirtualizedMessageList';
+import { VoiceMessageButton } from '@/components/shared/VoiceMessageButton';
+import { useMessageSearch } from '@/hooks/shared/useMessageSearch';
 import { toast } from '@/hooks/shared/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -232,7 +236,8 @@ export default function RealtimeMessenger() {
   const [replyingToMessageId, setReplyingToMessageId] = useState<string | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  // Message search hook (replaces manual state)
+  const messageSearch = useMessageSearch(selectedConversation?.id || null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationChannelRef = useRef<RealtimeChannel | null>(null);
@@ -2491,7 +2496,9 @@ export default function RealtimeMessenger() {
           
           {/* Universe Switcher */}
           <div className="flex items-center">
-            <UniverseSwitcher />
+            <Suspense fallback={<Button variant="ghost" size="icon" className="h-9 w-9" disabled><Loader2 className="h-4 w-4 animate-spin" /></Button>}>
+              <UniverseSwitcher />
+            </Suspense>
           </div>
         </div>
       </div>
@@ -3108,326 +3115,355 @@ export default function RealtimeMessenger() {
               </div>
 
               {/* Messages */}
-              <ScrollArea className="flex-1">
+              <div className="flex-1 flex flex-col min-h-0">
                 {/* Message Search */}
                 {selectedConversation && (
-                  <div className="p-3 border-b">
-                    <Input
-                      placeholder="Search messages..."
-                      value={messageSearchQuery}
-                      onChange={(e) => setMessageSearchQuery(e.target.value)}
-                      className="h-8 text-sm"
-                    />
+                  <div className="p-3 border-b bg-card/50 backdrop-blur">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search messages..."
+                        value={messageSearch.searchQuery}
+                        onChange={(e) => messageSearch.setSearchQuery(e.target.value)}
+                        className="h-8 text-sm pl-9"
+                      />
+                      {messageSearch.searchQuery && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                          onClick={messageSearch.clearSearch}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    {messageSearch.isSearching && (
+                      <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Searching...
+                      </div>
+                    )}
+                    {messageSearch.results.length > 0 && messageSearch.searchQuery && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Found {messageSearch.results.length} result{messageSearch.results.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
                   </div>
                 )}
-                <div className="p-6 space-y-4">
-                  {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full py-12">
-                      <div className="rounded-full bg-muted p-4 mb-3">
-                        <MessageSquare className="h-6 w-6 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
+                
+                {/* Virtualized Message List */}
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full py-12">
+                    <div className="rounded-full bg-muted p-4 mb-3">
+                      <MessageSquare className="h-6 w-6 text-muted-foreground" />
                     </div>
-                  ) : (
-                    (() => {
-                      // Filter messages by search query
-                      const filteredMessages = messageSearchQuery.trim()
-                        ? messages.filter(m => 
-                            m.content.toLowerCase().includes(messageSearchQuery.toLowerCase()) ||
-                            m.sender_profile?.display_name?.toLowerCase().includes(messageSearchQuery.toLowerCase())
-                          )
-                        : messages;
-                      
-                      if (messageSearchQuery.trim() && filteredMessages.length === 0) {
-                        return (
-                          <div key="no-results" className="flex flex-col items-center justify-center h-full py-12">
-                            <p className="text-sm text-muted-foreground">No messages found matching "{messageSearchQuery}"</p>
-                          </div>
-                        );
-                      }
-                      
-                      return filteredMessages.map((message, index) => {
-                        const isMe = message.sender_profile_universe_id === universe?.id;
-                        const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
-                      const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
-                      const showTime = !prevMessage || 
-                        (new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime()) > 300000; // 5 minutes
-
+                    <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  (() => {
+                    // Use search results if searching, otherwise use all messages
+                    const displayMessages = messageSearch.searchQuery && messageSearch.results.length > 0
+                      ? messageSearch.results.map(r => messages.find(m => m.id === r.id)).filter(Boolean) as Message[]
+                      : messages;
+                    
+                    if (messageSearch.searchQuery && displayMessages.length === 0) {
                       return (
-                        <div key={message.id}>
-                          {showTime && (
-                            <div className="flex items-center justify-center my-6">
-                              <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                                {formatDistanceToNow(new Date(message.created_at), {
-                                  addSuffix: false
-                                })}
-                              </span>
-                            </div>
-                          )}
-                          <div
-                            className={cn(
-                              "flex gap-3 group",
-                              isMe && "flex-row-reverse"
-                            )}
-                            onMouseEnter={() => setHoveredMessageId(message.id)}
-                            onMouseLeave={() => setHoveredMessageId(null)}
-                          >
-                            {showAvatar ? (
-                              <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-background">
-                                <AvatarImage src={message.sender_profile?.avatar_url} />
-                                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary text-xs font-semibold">
-                                  {message.sender_profile?.display_name?.charAt(0) || '?'}
-                                </AvatarFallback>
-                              </Avatar>
-                            ) : (
-                              <div className="w-8" />
-                            )}
+                        <div className="flex flex-col items-center justify-center h-full py-12">
+                          <p className="text-sm text-muted-foreground">No messages found matching "{messageSearch.searchQuery}"</p>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <VirtualizedMessageList
+                        messages={displayMessages}
+                        renderMessage={(message, index) => {
+                          const prevMessage = index > 0 ? displayMessages[index - 1] : null;
+                          const isMe = message.sender_profile_universe_id === universe?.id;
+                          const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
+                          const showTime = !prevMessage || 
+                            (new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime()) > 300000; // 5 minutes
 
-                            <div className={cn("flex flex-col max-w-[70%]", isMe && "items-end")}>
-                              {showAvatar && !isMe && (
-                                <span className="text-xs text-muted-foreground mb-1 px-1">
-                                  {message.sender_profile?.display_name || 'Unknown'}
-                                </span>
+                          return (
+                            <div key={message.id} className="px-3 md:px-6 py-2">
+                              {showTime && (
+                                <div className="flex items-center justify-center my-4">
+                                  <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                                    {formatDistanceToNow(new Date(message.created_at), {
+                                      addSuffix: false
+                                    })}
+                                  </span>
+                                </div>
                               )}
                               <div
                                 className={cn(
-                                  "rounded-2xl px-4 py-2.5 shadow-sm transition-all relative",
-                                  "group-hover:shadow-md",
-                                  isMe
-                                    ? "bg-primary text-primary-foreground rounded-br-md"
-                                    : "bg-card border border-border rounded-bl-md"
+                                  "flex gap-3 group",
+                                  isMe && "flex-row-reverse"
                                 )}
+                                onMouseEnter={() => setHoveredMessageId(message.id)}
+                                onMouseLeave={() => setHoveredMessageId(null)}
                               >
-                                {/* Reply Preview */}
-                                {message.reply_to_message_id && (() => {
-                                  const repliedTo = message.reply_to_message || messages.find(m => m.id === message.reply_to_message_id);
-                                  if (!repliedTo) return null;
-                                  const replySender = (repliedTo as any).profile_universes || messages.find(m => m.id === message.reply_to_message_id)?.sender_profile;
-                                  return (
-                                    <div className={cn(
-                                      "mb-2 pb-2 border-l-2 pl-2 text-xs opacity-70",
-                                      isMe ? "border-primary-foreground/30" : "border-border"
-                                    )}>
-                                      <p className="font-medium">Replying to {replySender?.display_name || 'message'}</p>
-                                      <p className="truncate">{repliedTo.content}</p>
-                                    </div>
-                                  );
-                                })()}
-                                
-                                {/* Message Actions (hover) */}
-                                {hoveredMessageId === message.id && (
-                                  <div className={cn(
-                                    "absolute top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
-                                    isMe ? "left-2" : "right-2"
-                                  )}>
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-6 w-6"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <MoreVertical className="h-3 w-3" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align={isMe ? "start" : "end"}>
-                                        {isMe && (
-                                          <>
-                                            <DropdownMenuItem onClick={() => handleEditMessage(message)}>
-                                              <Edit className="h-4 w-4 mr-2" />
-                                              Edit
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem 
-                                              onClick={() => handleDeleteMessage(message.id)}
-                                              className="text-destructive"
-                                            >
-                                              <Trash2 className="h-4 w-4 mr-2" />
-                                              Delete
-                                            </DropdownMenuItem>
-                                          </>
-                                        )}
-                                        <DropdownMenuItem onClick={() => handleReplyToMessage(message)}>
-                                          <Reply className="h-4 w-4 mr-2" />
-                                          Reply
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => setShowReactionPicker(message.id)}>
-                                          <Smile className="h-4 w-4 mr-2" />
-                                          Add Reaction
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </div>
-                                )}
-                                {/* Attachments */}
-                                {(() => {
-                                  const messageAttachments = message.metadata?.attachments || [];
-                                  if (messageAttachments.length > 0) {
-                                    console.log('[RealtimeMessenger] Rendering attachments:', {
-                                      messageId: message.id,
-                                      attachmentCount: messageAttachments.length,
-                                      attachments: messageAttachments
-                                    });
-                                  }
-                                  return null;
-                                })()}
-                                {message.metadata?.attachments && message.metadata.attachments.length > 0 && (
-                                  <div className="mb-2 space-y-2">
-                                    {message.metadata.attachments.map((attachment: any, idx: number) => (
-                                      <div key={idx} className="rounded-lg overflow-hidden">
-                                        {attachment.type?.startsWith('image/') ? (
-                                          <a
-                                            href={attachment.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="block"
-                                          >
-                                            <img
-                                              src={attachment.url}
-                                              alt={attachment.name}
-                                              className="max-w-full max-h-64 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                            />
-                                          </a>
-                                        ) : (
-                                          <a
-                                            href={attachment.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className={cn(
-                                              "flex items-center gap-2 p-3 rounded-lg border transition-colors",
-                                              isMe
-                                                ? "bg-primary/20 border-primary/30 hover:bg-primary/30"
-                                                : "bg-muted/50 border-border hover:bg-muted"
-                                            )}
-                                          >
-                                            <File className="h-5 w-5 flex-shrink-0" />
-                                            <div className="flex-1 min-w-0">
-                                              <p className="text-sm font-medium truncate">{attachment.name}</p>
-                                              <p className="text-xs opacity-70">
-                                                {(attachment.size / 1024).toFixed(1)} KB
-                                              </p>
-                                            </div>
-                                          </a>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                
-                                {/* Message Content */}
-                                {editingMessageId === message.id ? (
-                                  <div className="space-y-2">
-                                    <Textarea
-                                      value={editingMessageContent}
-                                      onChange={(e) => setEditingMessageContent(e.target.value)}
-                                      className="min-h-[60px] text-xs md:text-sm"
-                                      autoFocus
-                                    />
-                                    <div className="flex gap-2">
-                                      <Button
-                                        size="sm"
-                                        onClick={handleSaveEdit}
-                                        disabled={!editingMessageContent.trim()}
-                                      >
-                                        Save
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={handleCancelEdit}
-                                      >
-                                        Cancel
-                                      </Button>
-                                    </div>
-                                  </div>
+                                {showAvatar ? (
+                                  <Avatar className="h-8 w-8 flex-shrink-0 ring-2 ring-background">
+                                    <AvatarImage src={message.sender_profile?.avatar_url} />
+                                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary text-xs font-semibold">
+                                      {message.sender_profile?.display_name?.charAt(0) || '?'}
+                                    </AvatarFallback>
+                                  </Avatar>
                                 ) : (
-                                  message.content && message.content !== '📎' && (
-                                    <p className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                      {message.content}
-                                    </p>
-                                  )
+                                  <div className="w-8" />
                                 )}
-                              </div>
-                              
-                              {/* Reactions */}
-                              <div className="flex items-center gap-1 mt-1.5">
-                                {message.reactions && message.reactions.length > 0 && (
-                                  <div className="flex gap-1 flex-wrap">
-                                    {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => {
-                                      const reactionsWithEmoji = message.reactions?.filter(r => r.emoji === emoji) || [];
-                                      const hasUserReaction = reactionsWithEmoji.some(r => r.profile_universe_id === universe?.id);
-                                      return (
-                                        <button
-                                          key={emoji}
-                                          onClick={() => handleAddReaction(message.id, emoji)}
-                                          className={cn(
-                                            "text-xs bg-muted px-2 py-0.5 rounded-full hover:bg-muted/80 transition-colors flex items-center gap-1",
-                                            hasUserReaction && "ring-2 ring-primary"
-                                          )}
-                                        >
-                                          <span>{emoji}</span>
-                                          <span className="text-[10px] opacity-70">{reactionsWithEmoji.length}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                                {showReactionPicker === message.id && (
-                                  <div className="absolute bottom-full left-0 mb-2 bg-card border border-border rounded-lg p-2 shadow-lg z-10">
-                                    <div className="flex gap-1">
-                                      {['❤️', '👍', '👏', '🎉', '🔥', '😄', '😮', '😢'].map((emoji) => (
-                                        <button
-                                          key={emoji}
-                                          onClick={() => {
-                                            handleAddReaction(message.id, emoji);
-                                            setShowReactionPicker(null);
-                                          }}
-                                          className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-muted"
-                                        >
-                                          {emoji}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {hoveredMessageId === message.id && !showReactionPicker && (
-                                  <button
-                                    onClick={() => setShowReactionPicker(message.id)}
-                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-                                  >
-                                    <Smile className="h-3 w-3" />
-                                  </button>
-                                )}
-                              </div>
 
-                              <div className="flex items-center gap-1 mt-1">
-                                <span className="text-xs text-muted-foreground px-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {formatDistanceToNow(new Date(message.created_at), {
-                                    addSuffix: true
-                                  })}
-                                  {message.edited_at && ' (edited)'}
-                                </span>
-                                {/* Read Receipt */}
-                                {isMe && (
-                                  <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {message.read_at ? (
-                                      <CheckCheck className="h-3 w-3 text-primary" />
-                                    ) : (
-                                      <Check className="h-3 w-3" />
+                                <div className={cn("flex flex-col max-w-[70%]", isMe && "items-end")}>
+                                  {showAvatar && !isMe && (
+                                    <span className="text-xs text-muted-foreground mb-1 px-1">
+                                      {message.sender_profile?.display_name || 'Unknown'}
+                                    </span>
+                                  )}
+                                  <div
+                                    className={cn(
+                                      "rounded-2xl px-4 py-2.5 shadow-sm transition-all relative",
+                                      "group-hover:shadow-md",
+                                      isMe
+                                        ? "bg-primary text-primary-foreground rounded-br-md"
+                                        : "bg-card border border-border rounded-bl-md"
                                     )}
-                                  </span>
-                                )}
+                                  >
+                                    {/* Reply Preview */}
+                                    {message.reply_to_message_id && (() => {
+                                      const repliedTo = message.reply_to_message || messages.find(m => m.id === message.reply_to_message_id);
+                                      if (!repliedTo) return null;
+                                      const replySender = (repliedTo as any).profile_universes || messages.find(m => m.id === message.reply_to_message_id)?.sender_profile;
+                                      return (
+                                        <div className={cn(
+                                          "mb-2 pb-2 border-l-2 pl-2 text-xs opacity-70",
+                                          isMe ? "border-primary-foreground/30" : "border-border"
+                                        )}>
+                                          <p className="font-medium">Replying to {replySender?.display_name || 'message'}</p>
+                                          <p className="truncate">{repliedTo.content}</p>
+                                        </div>
+                                      );
+                                    })()}
+                                    
+                                    {/* Message Actions (hover) */}
+                                    {hoveredMessageId === message.id && (
+                                      <div className={cn(
+                                        "absolute top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                                        isMe ? "left-2" : "right-2"
+                                      )}>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <MoreVertical className="h-3 w-3" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align={isMe ? "start" : "end"}>
+                                            {isMe && (
+                                              <>
+                                                <DropdownMenuItem onClick={() => handleEditMessage(message)}>
+                                                  <Edit className="h-4 w-4 mr-2" />
+                                                  Edit
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem 
+                                                  onClick={() => handleDeleteMessage(message.id)}
+                                                  className="text-destructive"
+                                                >
+                                                  <Trash2 className="h-4 w-4 mr-2" />
+                                                  Delete
+                                                </DropdownMenuItem>
+                                              </>
+                                            )}
+                                            <DropdownMenuItem onClick={() => handleReplyToMessage(message)}>
+                                              <Reply className="h-4 w-4 mr-2" />
+                                              Reply
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => setShowReactionPicker(message.id)}>
+                                              <Smile className="h-4 w-4 mr-2" />
+                                              Add Reaction
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Attachments */}
+                                    {message.metadata?.attachments && message.metadata.attachments.length > 0 && (
+                                      <div className="mb-2 space-y-2">
+                                        {message.metadata.attachments.map((attachment: any, idx: number) => (
+                                          <div key={idx} className="rounded-lg overflow-hidden">
+                                            {attachment.type?.startsWith('image/') ? (
+                                              <a
+                                                href={attachment.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block"
+                                              >
+                                                <img
+                                                  src={attachment.url}
+                                                  alt={attachment.name}
+                                                  className="max-w-full max-h-64 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                                />
+                                              </a>
+                                            ) : attachment.type === 'audio' || attachment.type?.startsWith('audio/') ? (
+                                              <div className={cn(
+                                                "flex items-center gap-2 p-3 rounded-lg border",
+                                                isMe
+                                                  ? "bg-primary/20 border-primary/30"
+                                                  : "bg-muted/50 border-border"
+                                              )}>
+                                                <Music className="h-5 w-5 flex-shrink-0" />
+                                                <audio controls className="flex-1">
+                                                  <source src={attachment.url} type="audio/webm" />
+                                                  Your browser does not support audio playback.
+                                                </audio>
+                                              </div>
+                                            ) : (
+                                              <a
+                                                href={attachment.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={cn(
+                                                  "flex items-center gap-2 p-3 rounded-lg border transition-colors",
+                                                  isMe
+                                                    ? "bg-primary/20 border-primary/30 hover:bg-primary/30"
+                                                    : "bg-muted/50 border-border hover:bg-muted"
+                                                )}
+                                              >
+                                                <File className="h-5 w-5 flex-shrink-0" />
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="text-sm font-medium truncate">{attachment.name}</p>
+                                                  <p className="text-xs opacity-70">
+                                                    {attachment.size ? `${(attachment.size / 1024).toFixed(1)} KB` : ''}
+                                                  </p>
+                                                </div>
+                                              </a>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    
+                                    {/* Message Content */}
+                                    {editingMessageId === message.id ? (
+                                      <div className="space-y-2">
+                                        <Textarea
+                                          value={editingMessageContent}
+                                          onChange={(e) => setEditingMessageContent(e.target.value)}
+                                          className="min-h-[60px] text-xs md:text-sm"
+                                          autoFocus
+                                        />
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            onClick={handleSaveEdit}
+                                            disabled={!editingMessageContent.trim()}
+                                          >
+                                            Save
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={handleCancelEdit}
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      message.content && message.content !== '📎' && (
+                                        <p className="text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                          {message.content}
+                                        </p>
+                                      )
+                                    )}
+                                  </div>
+                                  
+                                  {/* Reactions */}
+                                  <div className="flex items-center gap-1 mt-1.5">
+                                    {message.reactions && message.reactions.length > 0 && (
+                                      <div className="flex gap-1 flex-wrap">
+                                        {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => {
+                                          const reactionsWithEmoji = message.reactions?.filter(r => r.emoji === emoji) || [];
+                                          const hasUserReaction = reactionsWithEmoji.some(r => r.profile_universe_id === universe?.id);
+                                          return (
+                                            <button
+                                              key={emoji}
+                                              onClick={() => handleAddReaction(message.id, emoji)}
+                                              className={cn(
+                                                "text-xs bg-muted px-2 py-0.5 rounded-full hover:bg-muted/80 transition-colors flex items-center gap-1",
+                                                hasUserReaction && "ring-2 ring-primary"
+                                              )}
+                                            >
+                                              <span>{emoji}</span>
+                                              <span className="text-[10px] opacity-70">{reactionsWithEmoji.length}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    {showReactionPicker === message.id && (
+                                      <div className="absolute bottom-full left-0 mb-2 bg-card border border-border rounded-lg p-2 shadow-lg z-10">
+                                        <div className="flex gap-1">
+                                          {['❤️', '👍', '👏', '🎉', '🔥', '😄', '😮', '😢'].map((emoji) => (
+                                            <button
+                                              key={emoji}
+                                              onClick={() => {
+                                                handleAddReaction(message.id, emoji);
+                                                setShowReactionPicker(null);
+                                              }}
+                                              className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-muted"
+                                            >
+                                              {emoji}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {hoveredMessageId === message.id && !showReactionPicker && (
+                                      <button
+                                        onClick={() => setShowReactionPicker(message.id)}
+                                        className="text-xs text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                                      >
+                                        <Smile className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <span className="text-xs text-muted-foreground px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {formatDistanceToNow(new Date(message.created_at), {
+                                        addSuffix: true
+                                      })}
+                                      {message.edited_at && ' (edited)'}
+                                    </span>
+                                    {/* Read Receipt */}
+                                    {isMe && (
+                                      <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {message.read_at ? (
+                                          <CheckCheck className="h-3 w-3 text-primary" />
+                                        ) : (
+                                          <Check className="h-3 w-3" />
+                                        )}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </div>
-                      );
-                    });
-                    })()
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
+                          );
+                        }}
+                        autoScroll={!messageSearch.searchQuery}
+                      />
+                    );
+                  })()
+                )}
+                
                 {/* Typing Indicator */}
                 {typingIndicatorText && (
                   <div className="px-3 md:px-6 pb-2">
@@ -3441,7 +3477,7 @@ export default function RealtimeMessenger() {
                     </div>
                   </div>
                 )}
-              </ScrollArea>
+              </div>
 
               {/* Input */}
               <div className="border-t p-2 md:p-4 bg-card/50 backdrop-blur">
@@ -3537,7 +3573,13 @@ export default function RealtimeMessenger() {
                     >
                       <Paperclip className="h-3.5 w-3.5 md:h-4 md:w-4" />
                     </Button>
-                    <EmojiPicker onEmojiSelect={handleEmojiSelect} />
+                    <VoiceMessageButton 
+                      conversationId={selectedConversation?.id || null}
+                      universeId={universe?.id || null}
+                    />
+                    <Suspense fallback={<Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9" disabled><Loader2 className="h-3.5 w-3.5 md:h-4 md:w-4 animate-spin" /></Button>}>
+                      <EmojiPicker onEmojiSelect={handleEmojiSelect} />
+                    </Suspense>
                   </div>
                   <div className="flex-1 relative">
                     <Textarea
@@ -3915,23 +3957,29 @@ export default function RealtimeMessenger() {
 
       {/* Video Call Dialog */}
       {videoCallParticipant && selectedConversation && isVideoCallOpen && (
-        <VideoCallDialog
-          open={isVideoCallOpen}
-          onOpenChange={(open) => {
-            setIsVideoCallOpen(open);
-            if (!open) {
-              // Clear participant when dialog closes to prevent re-opening
-              setTimeout(() => {
-                setVideoCallParticipant(null);
-              }, 300);
-            }
-          }}
-          conversationId={selectedConversation.id}
-          remoteUserId={videoCallParticipant.userId}
-          remoteUniverseId={videoCallParticipant.universeId}
-          remoteUserName={videoCallParticipant.userName}
-          remoteUserAvatar={videoCallParticipant.userAvatar}
-        />
+        <Suspense fallback={
+          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        }>
+          <VideoCallDialog
+            open={isVideoCallOpen}
+            onOpenChange={(open) => {
+              setIsVideoCallOpen(open);
+              if (!open) {
+                // Clear participant when dialog closes to prevent re-opening
+                setTimeout(() => {
+                  setVideoCallParticipant(null);
+                }, 300);
+              }
+            }}
+            conversationId={selectedConversation.id}
+            remoteUserId={videoCallParticipant.userId}
+            remoteUniverseId={videoCallParticipant.universeId}
+            remoteUserName={videoCallParticipant.userName}
+            remoteUserAvatar={videoCallParticipant.userAvatar}
+          />
+        </Suspense>
       )}
     </>
   );
