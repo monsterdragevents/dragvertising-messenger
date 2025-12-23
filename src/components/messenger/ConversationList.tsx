@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Search, UserPlus, Archive, Pin, Bell, BellOff } from 'lucide-react';
+import { MessageSquare, Search, UserPlus, Archive, Pin, Bell, BellOff, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +46,10 @@ interface ConversationListProps {
   filter: 'all' | 'unread' | 'pinned' | 'archived';
   onFilterChange: (filter: 'all' | 'unread' | 'pinned' | 'archived') => void;
   isLoading?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+  showSidebar?: boolean;
+  onCloseSidebar?: () => void;
 }
 
 export function ConversationList({
@@ -58,7 +62,11 @@ export function ConversationList({
   onSearchChange,
   filter,
   onFilterChange,
-  isLoading = false
+  isLoading = false,
+  isCollapsed = false,
+  onToggleCollapse,
+  showSidebar = true,
+  onCloseSidebar
 }: ConversationListProps) {
   // Filter conversations based on active filter
   const filteredConversations = React.useMemo(() => {
@@ -131,20 +139,73 @@ export function ConversationList({
     return undefined;
   };
 
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col h-full bg-background border-r border-border w-16 items-center py-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleCollapse}
+          className="h-8 w-8 mb-2"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onNewMessage}
+          className="h-8 w-8"
+        >
+          <UserPlus className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full bg-background border-r border-border">
+    <div className="flex flex-col h-full bg-background border-r border-border w-full sm:w-80 md:w-96">
       {/* Header */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Messages</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onNewMessage}
-            className="h-8 w-8"
-          >
-            <UserPlus className="h-4 w-4" />
-          </Button>
+      <div className="p-3 md:p-4 border-b border-border">
+        <div className="flex items-center justify-between mb-3 md:mb-4">
+          <div className="flex items-center gap-2">
+            {/* Mobile close button */}
+            {onCloseSidebar && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onCloseSidebar}
+                className="h-8 w-8 md:hidden"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+            <div>
+              <h2 className="text-lg md:text-xl font-semibold">Messages</h2>
+              <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+                {filteredConversations.length} {filteredConversations.length === 1 ? 'conversation' : 'conversations'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onNewMessage}
+              className="h-8 w-8 md:h-9 md:w-9"
+            >
+              <UserPlus className="h-4 w-4" />
+            </Button>
+            {onToggleCollapse && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                className="h-8 w-8 md:h-9 md:w-9 hidden md:flex"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Search */}
@@ -266,3 +327,4 @@ export function ConversationList({
     </div>
   );
 }
+

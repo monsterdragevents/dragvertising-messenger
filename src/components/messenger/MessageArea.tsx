@@ -31,18 +31,26 @@ interface Message {
   reply_to_message?: any;
 }
 
+interface TypingUser {
+  user_id: string;
+  display_name: string;
+  timestamp: number;
+}
+
 interface MessageAreaProps {
   messages: Message[];
   currentUniverseId?: string;
   isLoading?: boolean;
   selectedConversationName?: string;
+  typingUsers?: TypingUser[];
 }
 
 export function MessageArea({
   messages,
   currentUniverseId,
   isLoading = false,
-  selectedConversationName
+  selectedConversationName,
+  typingUsers = []
 }: MessageAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -176,6 +184,35 @@ export function MessageArea({
                       </div>
                     )}
 
+                    {/* Message Reactions */}
+                    {message.reactions && message.reactions.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {Object.entries(
+                          message.reactions.reduce((acc: any, reaction: any) => {
+                            const emoji = reaction.emoji;
+                            if (!acc[emoji]) {
+                              acc[emoji] = [];
+                            }
+                            acc[emoji].push(reaction);
+                            return acc;
+                          }, {})
+                        ).map(([emoji, reactions]: [string, any]) => (
+                          <button
+                            key={emoji}
+                            className={cn(
+                              "px-2 py-1 rounded-full text-xs flex items-center gap-1",
+                              "bg-muted hover:bg-muted/80 transition-colors",
+                              isMe ? "bg-primary/20" : "bg-muted"
+                            )}
+                            title={reactions.map((r: any) => r.profile_universes?.display_name || 'User').join(', ')}
+                          >
+                            <span>{emoji}</span>
+                            <span className="text-muted-foreground">{reactions.length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Timestamp */}
                     <div className={cn(
                       "mt-1 text-xs opacity-70",
@@ -190,8 +227,22 @@ export function MessageArea({
             </div>
           );
         })}
+        {/* Typing Indicators */}
+        {typingUsers.length > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {typingUsers.map(u => u.display_name).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+            </span>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
     </ScrollArea>
   );
 }
+

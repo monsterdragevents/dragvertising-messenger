@@ -4,7 +4,7 @@
  * Simplified architecture with modular components and better error handling
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUniverse } from '@/hooks/shared/useUniverse';
@@ -17,9 +17,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, UserPlus, X } from 'lucide-react';
+import { Loader2, UserPlus, X, ExternalLink, Menu, Video, Search } from 'lucide-react';
 import { toast } from '@/hooks/shared/use-toast';
 import { cn } from '@/lib/utils';
+
+// Lazy load heavy components
+const UniverseSwitcher = lazy(() => import('@/components/shared/UniverseSwitcher').then(module => ({ default: module.UniverseSwitcher })));
+const VoiceMessageButton = lazy(() => import('@/components/shared/VoiceMessageButton').then(module => ({ default: module.VoiceMessageButton })));
+const VideoCallDialog = lazy(() => import('@/components/shared/VideoCallDialog').then(module => ({ default: module.VideoCallDialog })));
 
 // Types
 interface Conversation {
@@ -95,6 +100,21 @@ export default function RealtimeMessenger() {
   const [isNewMessageDialogOpen, setIsNewMessageDialogOpen] = useState(false);
   const [newMessageSearchQuery, setNewMessageSearchQuery] = useState('');
   const [newMessageSearchResults, setNewMessageSearchResults] = useState<any[]>([]);
+  
+  // Mobile responsive state
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
+  
+  // Typing indicators
+  const [typingUsers, setTypingUsers] = useState<Map<string, { user_id: string; display_name: string; timestamp: number }>>(new Map());
+  
+  // Message search
+  const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  
+  // Video call
+  const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
 
   // Refs
   const conversationChannelRef = useRef<RealtimeChannel | null>(null);
@@ -236,6 +256,10 @@ export default function RealtimeMessenger() {
         const conv = conversationList.find(c => c.id === conversationId);
         if (conv) {
           setSelectedConversation(conv);
+          // Hide sidebar on mobile when conversation is selected
+          if (window.innerWidth < 768) {
+            setShowSidebar(false);
+          }
         }
       }
     } catch (error: any) {
@@ -323,7 +347,8 @@ export default function RealtimeMessenger() {
           read_at: m.read_at,
           metadata: m.metadata || {},
           attachments: m.attachments,
-          sender_profile: senderProfile || undefined
+          sender_profile: senderProfile || undefined,
+          reactions: m.message_reactions || []
         };
       });
 
@@ -496,6 +521,26 @@ export default function RealtimeMessenger() {
           loadConversations();
         }
       })
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        const { user_id, display_name, is_typing, timestamp } = payload.payload;
+        
+        // Don't show own typing indicator
+        if (user_id === universe.id) return;
+
+        if (is_typing) {
+          setTypingUsers(prev => new Map(prev).set(user_id, {
+            user_id,
+            display_name,
+            timestamp: timestamp || Date.now()
+          }));
+        } else {
+          setTypingUsers(prev => {
+            const next = new Map(prev);
+            next.delete(user_id);
+            return next;
+          });
+        }
+      })
       .subscribe((status) => {
         console.log('[RealtimeMessenger] Channel status:', status);
         if (status === 'SUBSCRIBED') {
@@ -520,15 +565,54 @@ export default function RealtimeMessenger() {
   const handleSelectConversation = useCallback((conversation: Conversation) => {
     setSelectedConversation(conversation);
     setSearchParams({ conversation: conversation.id });
+    // Hide sidebar on mobile when conversation is selected
+    if (window.innerWidth < 768) {
+      setShowSidebar(false);
+    }
+  }, [setSearchParams]);
+  
+  const handleBackToConversations = useCallback(() => {
+    setSelectedConversation(null);
+    setSearchParams({});
+    setShowSidebar(true);
+    setShowRightSidebar(false);
   }, [setSearchParams]);
 
   const handleTyping = useCallback(() => {
-    // Typing indicator implementation
+    if (!conversationChannelRef.current || !universe) return;
+
+    // Clear previous timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    // TODO: Implement typing indicator broadcast
-  }, []);
+
+    // Send typing event
+    conversationChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: {
+        user_id: universe.id,
+        display_name: universe.display_name,
+        is_typing: true,
+        timestamp: Date.now()
+      }
+    });
+
+    // Auto-stop typing after 3 seconds
+    typingTimeoutRef.current = setTimeout(() => {
+      if (conversationChannelRef.current && universe) {
+        conversationChannelRef.current.send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: {
+            user_id: universe.id,
+            display_name: universe.display_name,
+            is_typing: false
+          }
+        });
+      }
+    }, 3000);
+  }, [universe]);
 
   // =====================================================
   // EARLY RETURNS
@@ -557,22 +641,82 @@ export default function RealtimeMessenger() {
   // RENDER
   // =====================================================
   return (
-    <div className="flex h-screen bg-background">
-      {/* Conversation List Sidebar */}
-      <div className="w-full md:w-80 lg:w-96 flex-shrink-0 border-r border-border">
-        <ConversationList
-          conversations={conversations}
-          selectedConversationId={selectedConversation?.id}
-          onSelectConversation={handleSelectConversation}
-          onNewMessage={() => setIsNewMessageDialogOpen(true)}
-          currentUniverseId={universe.id}
-          searchQuery={conversationSearchQuery}
-          onSearchChange={setConversationSearchQuery}
-          filter={conversationFilter}
-          onFilterChange={setConversationFilter}
-          isLoading={isLoadingConversations}
-        />
+    <>
+      {/* Navigation Header */}
+      <div className="border-b bg-card/95 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
+          <a
+            href={(import.meta.env.VITE_MAIN_APP_URL || (import.meta.env.DEV ? 'http://localhost:3000' : 'https://dragvertising.app')).replace(/\/$/, '')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity group"
+            aria-label="Go to Dragvertising main app"
+          >
+            <img 
+              src="/dragvertising-logo.png" 
+              alt="Dragvertising" 
+              className="h-6 w-auto group-hover:scale-105 transition-transform"
+            />
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </a>
+          
+          {/* Right Side Navigation */}
+          <div className="flex items-center gap-2">
+            {/* Mobile menu button to show sidebar */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSidebar(true)}
+              className="h-9 w-9 md:hidden"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
+            
+            {/* Universe Switcher */}
+            <div className="flex items-center">
+              <Suspense fallback={<Button variant="ghost" size="icon" className="h-9 w-9" disabled><Loader2 className="h-4 w-4 animate-spin" /></Button>}>
+                <UniverseSwitcher />
+              </Suspense>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div className="flex h-[calc(100vh-57px)] bg-background relative overflow-hidden">
+        {/* Mobile Overlay */}
+        {showSidebar && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-10 md:hidden"
+            onClick={() => setShowSidebar(false)}
+          />
+        )}
+        
+        {/* Conversation List Sidebar */}
+        <div className={cn(
+          "flex-shrink-0 border-r border-border bg-background transition-all duration-300 ease-in-out",
+          "w-full sm:w-80 md:w-96",
+          "absolute md:relative inset-0 z-20 md:z-auto",
+          "min-w-0 max-w-full overflow-hidden",
+          showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          isSidebarCollapsed && "md:w-16"
+        )}>
+          <ConversationList
+            conversations={conversations}
+            selectedConversationId={selectedConversation?.id}
+            onSelectConversation={handleSelectConversation}
+            onNewMessage={() => setIsNewMessageDialogOpen(true)}
+            currentUniverseId={universe.id}
+            searchQuery={conversationSearchQuery}
+            onSearchChange={setConversationSearchQuery}
+            filter={conversationFilter}
+            onFilterChange={setConversationFilter}
+            isLoading={isLoadingConversations}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            showSidebar={showSidebar}
+            onCloseSidebar={() => setShowSidebar(false)}
+          />
+        </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -580,15 +724,30 @@ export default function RealtimeMessenger() {
           <>
             {/* Chat Header */}
             <div className="h-16 border-b border-border px-4 flex items-center justify-between bg-background">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Mobile menu/back button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (window.innerWidth < 768) {
+                      setShowSidebar(true);
+                    } else {
+                      handleBackToConversations();
+                    }
+                  }}
+                  className="h-9 w-9 md:hidden flex-shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <Avatar className="h-10 w-10 flex-shrink-0">
                   <AvatarImage src={selectedConversation.participants.find(p => p.profile_universe_id !== universe.id)?.profile_universe?.avatar_url} />
                   <AvatarFallback>
                     {selectedConversation.name?.charAt(0) || '?'}
                   </AvatarFallback>
                 </Avatar>
-                <div>
-                  <h3 className="font-semibold">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold truncate">
                     {selectedConversation.name || 
                      selectedConversation.participants
                        .filter(p => p.profile_universe_id !== universe.id)
@@ -598,6 +757,26 @@ export default function RealtimeMessenger() {
                   </h3>
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
+                  title="Search messages"
+                  onClick={() => setShowMessageSearch(!showMessageSearch)}
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
+                  title="Video call"
+                  onClick={() => setIsVideoCallOpen(true)}
+                >
+                  <Video className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Messages Area */}
@@ -606,15 +785,41 @@ export default function RealtimeMessenger() {
               currentUniverseId={universe.id}
               isLoading={isLoadingMessages}
               selectedConversationName={selectedConversation.name}
+              typingUsers={Array.from(typingUsers.values())}
             />
 
+            {/* Message Search Bar */}
+            {showMessageSearch && (
+              <div className="border-b border-border px-4 py-2 bg-muted/50">
+                <Input
+                  placeholder="Search messages..."
+                  value={messageSearchQuery}
+                  onChange={(e) => setMessageSearchQuery(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+            )}
+
             {/* Message Input */}
-            <MessageInput
-              onSendMessage={sendMessage}
-              onTyping={handleTyping}
-              isSending={isSendingMessage}
-              placeholder={`Message ${selectedConversation.name || 'conversation'}...`}
-            />
+            <div className="relative">
+              <MessageInput
+                onSendMessage={sendMessage}
+                onTyping={handleTyping}
+                isSending={isSendingMessage}
+                placeholder={`Message ${selectedConversation.name || 'conversation'}...`}
+              />
+              {/* Voice Message Button */}
+              {selectedConversation && (
+                <div className="absolute bottom-16 right-4">
+                  <Suspense fallback={null}>
+                    <VoiceMessageButton
+                      conversationId={selectedConversation.id}
+                      universeId={universe.id}
+                    />
+                  </Suspense>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
@@ -627,6 +832,7 @@ export default function RealtimeMessenger() {
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {/* New Message Dialog */}
@@ -647,6 +853,18 @@ export default function RealtimeMessenger() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Video Call Dialog */}
+      {selectedConversation && (
+        <Suspense fallback={null}>
+          <VideoCallDialog
+            isOpen={isVideoCallOpen}
+            onClose={() => setIsVideoCallOpen(false)}
+            conversationId={selectedConversation.id}
+            otherParticipant={selectedConversation.participants.find(p => p.profile_universe_id !== universe.id)?.profile_universe}
+          />
+        </Suspense>
+      )}
+    </>
   );
 }

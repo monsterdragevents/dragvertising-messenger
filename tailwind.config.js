@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import designSystemPreset from "@dragvertising/design-system/tailwind-preset.js";
+
 export default {
   darkMode: ["class"],
   content: [
@@ -8,6 +10,7 @@ export default {
     './src/**/*.{ts,tsx}',
   ],
   prefix: "",
+  presets: [designSystemPreset],
   theme: {
     container: {
       center: true,
