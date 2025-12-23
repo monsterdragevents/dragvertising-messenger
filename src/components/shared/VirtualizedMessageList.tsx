@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect } from 'react';
 
 interface Message {
   id: string;

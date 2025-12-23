@@ -902,6 +902,7 @@ export default function RealtimeMessenger() {
         return msg;
       });
       
+      console.log('[RealtimeMessenger] Loaded messages:', messagesWithReplies.length);
       setMessages(messagesWithReplies);
       scrollToBottom();
 
@@ -3115,10 +3116,10 @@ export default function RealtimeMessenger() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 {/* Message Search */}
                 {selectedConversation && (
-                  <div className="p-3 border-b bg-card/50 backdrop-blur">
+                  <div className="flex-shrink-0 p-3 border-b bg-card/50 backdrop-blur">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -3153,33 +3154,35 @@ export default function RealtimeMessenger() {
                 )}
                 
                 {/* Virtualized Message List */}
-                {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full py-12">
-                    <div className="rounded-full bg-muted p-4 mb-3">
-                      <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full py-12">
+                      <div className="rounded-full bg-muted p-4 mb-3">
+                        <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
-                  </div>
-                ) : (
-                  (() => {
-                    // Use search results if searching, otherwise use all messages
-                    const displayMessages = messageSearch.searchQuery && messageSearch.results.length > 0
-                      ? messageSearch.results.map(r => messages.find(m => m.id === r.id)).filter(Boolean) as Message[]
-                      : messages;
-                    
-                    if (messageSearch.searchQuery && displayMessages.length === 0) {
+                  ) : (
+                    (() => {
+                      // Use search results if searching, otherwise use all messages
+                      const displayMessages = messageSearch.searchQuery && messageSearch.results.length > 0
+                        ? messageSearch.results.map(r => messages.find(m => m.id === r.id)).filter(Boolean) as Message[]
+                        : messages;
+                      
+                      if (messageSearch.searchQuery && displayMessages.length === 0) {
+                        return (
+                          <div className="flex flex-col items-center justify-center h-full py-12">
+                            <p className="text-sm text-muted-foreground">No messages found matching "{messageSearch.searchQuery}"</p>
+                          </div>
+                        );
+                      }
+                      
                       return (
-                        <div className="flex flex-col items-center justify-center h-full py-12">
-                          <p className="text-sm text-muted-foreground">No messages found matching "{messageSearch.searchQuery}"</p>
-                        </div>
-                      );
-                    }
-                    
-                    return (
-                      <VirtualizedMessageList
-                        messages={displayMessages}
-                        renderMessage={(message, index) => {
-                          const prevMessage = index > 0 ? displayMessages[index - 1] : null;
+                        <div className="flex-1 min-h-0">
+                          <VirtualizedMessageList
+                            messages={displayMessages}
+                            renderMessage={(message, index) => {
+                              const prevMessage = index > 0 ? displayMessages[index - 1] : null;
                           const isMe = message.sender_profile_universe_id === universe?.id;
                           const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
                           const showTime = !prevMessage || 
@@ -3460,13 +3463,14 @@ export default function RealtimeMessenger() {
                         }}
                         autoScroll={!messageSearch.searchQuery}
                       />
-                    );
-                  })()
-                )}
-                
-                {/* Typing Indicator */}
-                {typingIndicatorText && (
-                  <div className="px-3 md:px-6 pb-2">
+                    </div>
+                  );
+                })()
+              )}
+              
+              {/* Typing Indicator */}
+              {typingIndicatorText && (
+                  <div className="flex-shrink-0 px-3 md:px-6 pb-2">
                     <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-muted-foreground">
                       <div className="flex gap-0.5 md:gap-1">
                         <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
