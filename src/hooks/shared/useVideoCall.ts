@@ -41,7 +41,8 @@ export function useVideoCall({
   remoteUserId,
   remoteUniverseId,
   onRemoteStream,
-  onCallEnded
+  onCallEnded,
+  onError
 }: UseVideoCallProps): UseVideoCallResult {
   const { universe } = useUniverse();
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -52,7 +53,7 @@ export function useVideoCall({
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const sendSignalRef = useRef<((type: string, targetUserId: string, targetUniverseId: string, payload: any, senderUniverseId: string) => Promise<void>) | null>(null);
+  const sendSignalRef = useRef<((type: 'offer' | 'answer' | 'ice-candidate' | 'call-request' | 'call-accept' | 'call-reject' | 'call-end', targetUserId: string, targetUniverseId: string, payload: any, senderUniverseId: string) => Promise<void>) | null>(null);
   const isInitiatorRef = useRef(false);
 
   const cleanup = useCallback((shouldNotify = true) => {
@@ -91,7 +92,7 @@ export function useVideoCall({
     setCallState('idle');
   }, [remoteUserId, cleanup]);
 
-  const handleCallEnd = useCallback((senderId: string) => {
+  const handleCallEnd = useCallback((_senderId: string) => {
     cleanup();
     setCallState('idle');
   }, [cleanup]);
@@ -230,7 +231,8 @@ export function useVideoCall({
       }
       
       onError?.(errorMessage);
-      cleanup(false, 'idle'); // Don't notify on error, reset to idle so user can try again
+      cleanup(false); // Don't notify on error
+      setCallState('idle'); // Reset to idle so user can try again
     }
   }, [universe?.id, remoteUserId, remoteUniverseId, onRemoteStream, cleanup, onError]);
 

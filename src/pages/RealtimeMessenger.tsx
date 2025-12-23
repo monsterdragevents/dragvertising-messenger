@@ -74,7 +74,6 @@ import { UniverseSwitcher } from '@/components/shared/UniverseSwitcher';
 import { toast } from '@/hooks/shared/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { PageLoading } from '@/components/ui/loading';
 
 interface Conversation {
   id: string;
@@ -887,7 +886,10 @@ export default function RealtimeMessenger() {
                 id: repliedTo.id,
                 content: repliedTo.content,
                 sender_profile_universe_id: repliedTo.sender_profile_universe_id,
-                profile_universes: repliedTo.sender_profile
+                profile_universes: {
+                  id: repliedTo.sender_profile_universe_id,
+                  ...repliedTo.sender_profile
+                }
               }
             };
           }
@@ -2648,7 +2650,7 @@ export default function RealtimeMessenger() {
               )}>
                 {filteredConversations.map((conversation) => {
                 const otherParticipants = conversation.participants.filter(
-                  p => p.profile_universe_id !== universe.id
+                  p => p.profile_universe_id !== universe?.id
                 );
                 
                 // Get the other participant's profile_universe
@@ -2896,7 +2898,7 @@ export default function RealtimeMessenger() {
                   )}
                   {(() => {
                     const otherParticipants = selectedConversation.participants.filter(
-                      p => p.profile_universe_id !== universe.id
+                      p => p.profile_universe_id !== universe?.id
                     );
                     const otherParticipant = otherParticipants[0];
                     const participant = otherParticipant?.profile_universe || null;
@@ -2965,7 +2967,7 @@ export default function RealtimeMessenger() {
                 <div className="flex items-center gap-1">
                   {(() => {
                     const otherParticipants = selectedConversation.participants.filter(
-                      p => p.profile_universe_id !== universe.id
+                      p => p.profile_universe_id !== universe?.id
                     );
                     const otherParticipant = otherParticipants[0];
                     const participant = otherParticipant?.profile_universe || null;
@@ -3052,26 +3054,26 @@ export default function RealtimeMessenger() {
                             <DropdownMenuItem
                               onClick={() => {
                                 const isPinned = selectedConversation.participants.find(
-                                  p => p.profile_universe_id === universe.id
+                                  p => p.profile_universe_id === universe?.id
                                 )?.is_pinned;
                                 handlePinConversation(selectedConversation.id, !isPinned);
                               }}
                             >
                               <Pin className="h-4 w-4 mr-2" />
                               {selectedConversation.participants.find(
-                                p => p.profile_universe_id === universe.id
+                                p => p.profile_universe_id === universe?.id
                               )?.is_pinned ? 'Unpin' : 'Pin'} Conversation
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
                                 const isMuted = selectedConversation.participants.find(
-                                  p => p.profile_universe_id === universe.id
+                                  p => p.profile_universe_id === universe?.id
                                 )?.is_muted;
                                 handleMuteConversation(selectedConversation.id, !isMuted);
                               }}
                             >
                               {selectedConversation.participants.find(
-                                p => p.profile_universe_id === universe.id
+                                p => p.profile_universe_id === universe?.id
                               )?.is_muted ? (
                                 <>
                                   <Bell className="h-4 w-4 mr-2" />
@@ -3087,14 +3089,14 @@ export default function RealtimeMessenger() {
                             <DropdownMenuItem
                               onClick={() => {
                                 const isArchived = selectedConversation.participants.find(
-                                  p => p.profile_universe_id === universe.id
+                                  p => p.profile_universe_id === universe?.id
                                 )?.is_archived;
                                 handleArchiveConversation(selectedConversation.id, !isArchived);
                               }}
                             >
                               <Archive className="h-4 w-4 mr-2" />
                               {selectedConversation.participants.find(
-                                p => p.profile_universe_id === universe.id
+                                p => p.profile_universe_id === universe?.id
                               )?.is_archived ? 'Unarchive' : 'Archive'} Conversation
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -3145,7 +3147,7 @@ export default function RealtimeMessenger() {
                       }
                       
                       return filteredMessages.map((message, index) => {
-                        const isMe = message.sender_profile_universe_id === universe.id;
+                        const isMe = message.sender_profile_universe_id === universe?.id;
                         const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
                       const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
                       const showTime = !prevMessage || 
@@ -3200,7 +3202,7 @@ export default function RealtimeMessenger() {
                                 {message.reply_to_message_id && (() => {
                                   const repliedTo = message.reply_to_message || messages.find(m => m.id === message.reply_to_message_id);
                                   if (!repliedTo) return null;
-                                  const replySender = repliedTo.profile_universes || messages.find(m => m.id === message.reply_to_message_id)?.sender_profile;
+                                  const replySender = (repliedTo as any).profile_universes || messages.find(m => m.id === message.reply_to_message_id)?.sender_profile;
                                   return (
                                     <div className={cn(
                                       "mb-2 pb-2 border-l-2 pl-2 text-xs opacity-70",
@@ -3353,7 +3355,7 @@ export default function RealtimeMessenger() {
                                   <div className="flex gap-1 flex-wrap">
                                     {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => {
                                       const reactionsWithEmoji = message.reactions?.filter(r => r.emoji === emoji) || [];
-                                      const hasUserReaction = reactionsWithEmoji.some(r => r.profile_universe_id === universe.id);
+                                      const hasUserReaction = reactionsWithEmoji.some(r => r.profile_universe_id === universe?.id);
                                       return (
                                         <button
                                           key={emoji}
@@ -3409,9 +3411,9 @@ export default function RealtimeMessenger() {
                                 {isMe && (
                                   <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                                     {message.read_at ? (
-                                      <CheckCheck className="h-3 w-3 text-primary" title="Read" />
+                                      <CheckCheck className="h-3 w-3 text-primary" />
                                     ) : (
-                                      <Check className="h-3 w-3" title="Delivered" />
+                                      <Check className="h-3 w-3" />
                                     )}
                                   </span>
                                 )}
@@ -3447,7 +3449,7 @@ export default function RealtimeMessenger() {
                 {replyingToMessageId && (() => {
                   const replyingTo = messages.find(m => m.id === replyingToMessageId);
                   if (!replyingTo) return null;
-                  const isReplyingToMe = replyingTo.sender_profile_universe_id === universe.id;
+                  const isReplyingToMe = replyingTo.sender_profile_universe_id === universe?.id;
                   return (
                     <div className="mb-2 p-2 bg-muted/50 rounded-lg border-l-2 border-primary flex items-start justify-between">
                       <div className="flex-1 min-w-0">

@@ -3,7 +3,7 @@
  * Full-screen video call interface
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, X } from 'lucide-react';

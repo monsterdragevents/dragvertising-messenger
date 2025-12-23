@@ -3,14 +3,13 @@
  * Allows seamless switching between universes within the messenger
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -24,9 +23,9 @@ interface UniverseSwitcherProps {
   variant?: 'desktop' | 'mobile' | 'auto';
 }
 
-export function UniverseSwitcher({ className, variant = 'auto' }: UniverseSwitcherProps) {
+export function UniverseSwitcher({ className }: UniverseSwitcherProps) {
   const { user } = useAuth();
-  const { universe, availableUniverses, isLoading, switchUniverse, refreshUniverses } = useUniverse();
+  const { universe, availableUniverses, switchUniverse, refreshUniverses } = useUniverse();
   const [isOpen, setIsOpen] = useState(false);
 
   // Refresh universes when dropdown opens
