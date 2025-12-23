@@ -275,14 +275,15 @@ export function ConversationList({
               return (
                 <button
                   key={conversation.id}
+                  type="button"
                   onClick={() => onSelectConversation(conversation)}
                   className={cn(
                     "w-full p-dv-3 rounded-dv-lg text-left transition-dv-base mb-dv-1",
-                    "hover:bg-accent",
+                    "hover:bg-accent overflow-hidden",
                     isSelected && "bg-accent"
                   )}
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
                     <Avatar className="h-dv-12 w-dv-12 flex-shrink-0">
                       <AvatarImage src={getConversationAvatar(conversation)} />
                       <AvatarFallback>
@@ -290,24 +291,24 @@ export function ConversationList({
                       </AvatarFallback>
                     </Avatar>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-dv-1">
-                        <div className="flex items-center gap-dv-2">
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center justify-between mb-dv-1 gap-2 min-w-0">
+                        <div className="flex items-center gap-dv-2 min-w-0 flex-1">
                           <span className="font-dv-semibold text-dv-sm truncate">
                             {getConversationDisplayName(conversation)}
                           </span>
-                          {isPinned && <Pin className="h-dv-3 w-dv-3 text-muted-foreground" />}
-                          {isMuted && <BellOff className="h-dv-3 w-dv-3 text-muted-foreground" />}
+                          {isPinned && <Pin className="h-dv-3 w-dv-3 text-muted-foreground flex-shrink-0" />}
+                          {isMuted && <BellOff className="h-dv-3 w-dv-3 text-muted-foreground flex-shrink-0" />}
                         </div>
                         {conversation.last_message_at && (
-                          <span className="text-dv-xs text-muted-foreground flex-shrink-0">
+                          <span className="text-dv-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">
                             {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between gap-dv-2">
-                        <p className="text-dv-sm text-muted-foreground truncate">
+                      <div className="flex items-center justify-between gap-dv-2 min-w-0">
+                        <p className="text-dv-sm text-muted-foreground truncate flex-1 min-w-0">
                           {conversation.last_message?.content || 'No messages yet'}
                         </p>
                         {conversation.unread_count > 0 && (
@@ -327,4 +328,5 @@ export function ConversationList({
     </div>
   );
 }
+
 
