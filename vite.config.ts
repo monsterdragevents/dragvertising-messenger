@@ -1,77 +1,79 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import path from 'path'
-import { VitePWA } from 'vite-plugin-pwa'
+// PWA disabled temporarily - service workers can interfere with WebSocket connections
+// import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
-      manifest: {
-        name: 'Dragvertising Messenger',
-        short_name: 'Messenger',
-        description: 'Real-time messaging platform for the drag entertainment industry',
-        theme_color: '#FD0290',
-        background_color: '#000000',
-        display: 'standalone',
-        orientation: 'portrait-primary',
-        start_url: '/',
-        icons: [
-          {
-            src: 'icons/icon192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any maskable'
-          },
-          {
-            src: 'icons/icon512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
-          }
-        ],
-        shortcuts: [
-          {
-            name: 'New Message',
-            short_name: 'New',
-            description: 'Start a new conversation',
-            url: '/?action=new',
-            icons: [{ src: 'icons/icon192.png', sizes: '192x192' }]
-          }
-        ],
-        categories: ['social', 'communication']
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 // 24 hours
-              }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.storage\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'supabase-storage-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
-              }
-            }
-          }
-        ]
-      }
-    })
+    // PWA disabled temporarily - service workers can interfere with WebSocket connections
+    // VitePWA({
+    //   registerType: 'autoUpdate',
+    //   includeAssets: ['favicon.ico', 'icons/*.png'],
+    //   manifest: {
+    //     name: 'Dragvertising Messenger',
+    //     short_name: 'Messenger',
+    //     description: 'Real-time messaging platform for the drag entertainment industry',
+    //     theme_color: '#FD0290',
+    //     background_color: '#000000',
+    //     display: 'standalone',
+    //     orientation: 'portrait-primary',
+    //     start_url: '/',
+    //     icons: [
+    //       {
+    //         src: 'icons/icon192.png',
+    //         sizes: '192x192',
+    //         type: 'image/png',
+    //         purpose: 'any maskable'
+    //       },
+    //       {
+    //         src: 'icons/icon512.png',
+    //         sizes: '512x512',
+    //         type: 'image/png',
+    //         purpose: 'any maskable'
+    //       }
+    //     ],
+    //     shortcuts: [
+    //       {
+    //         name: 'New Message',
+    //         short_name: 'New',
+    //         description: 'Start a new conversation',
+    //         url: '/?action=new',
+    //         icons: [{ src: 'icons/icon192.png', sizes: '192x192' }]
+    //       }
+    //     ],
+    //     categories: ['social', 'communication']
+    //   },
+    //   workbox: {
+    //     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+    //     runtimeCaching: [
+    //       {
+    //         urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+    //         handler: 'NetworkFirst',
+    //         options: {
+    //           cacheName: 'supabase-cache',
+    //           expiration: {
+    //             maxEntries: 50,
+    //             maxAgeSeconds: 60 * 60 * 24 // 24 hours
+    //           }
+    //         }
+    //       },
+    //       {
+    //         urlPattern: /^https:\/\/.*\.supabase\.storage\/.*/i,
+    //         handler: 'CacheFirst',
+    //         options: {
+    //           cacheName: 'supabase-storage-cache',
+    //           expiration: {
+    //             maxEntries: 100,
+    //             maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
+    //           }
+    //         }
+    //       }
+    //     ]
+    //   }
+    // })
   ],
   resolve: {
     alias: {
