@@ -6,6 +6,11 @@
   "author": "Michael Ryan Whitson",
   "copyright": "Copyright © 2026 Dragvertising LLC. All rights reserved.",
   "license": "UNLICENSED",
+  "description": "Real-time messaging platform for Dragvertising - child app of DragvertisingApp",
+  "repository": {
+    "type": "git",
+    "directory": "dragvertising-messenger"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

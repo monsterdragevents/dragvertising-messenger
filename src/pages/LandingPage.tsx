@@ -1,16 +1,16 @@
 /**
  * Landing Page for Dragvertising Messenger
  * 
- * A clean, modern landing page with login/signup functionality.
+ * Matches the design of the main DragvertisingApp login page.
  * After successful authentication, users are redirected to the messenger.
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MessageSquare, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, Chrome, Crown, Users, Calendar, DollarSign, Music } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/shared/use-toast';
 
@@ -92,279 +92,483 @@ export default function LandingPage() {
     }
   };
 
+  // Handle Google OAuth login
+  const handleGoogleLogin = async () => {
+    if (isSubmitting) return;
+    
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (oauthError) throw oauthError;
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in with Google');
+      toast.error(err.message || 'Failed to sign in with Google');
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Facebook OAuth login
+  const handleFacebookLogin = async () => {
+    if (isSubmitting) return;
+    
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'facebook',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (oauthError) throw oauthError;
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in with Facebook');
+      toast.error(err.message || 'Failed to sign in with Facebook');
+      setIsSubmitting(false);
+    }
+  };
+
   // Show loading state
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
+      <div className="w-full flex-1 flex items-center justify-center bg-muted/30 min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Password reset view
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex flex-col lg:flex-row bg-background">
+        {/* Left Side - Reset Form */}
+        <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-background">
+          <div className="w-full max-w-md space-y-8">
+            {/* Logo */}
+            <div className="flex justify-center lg:justify-start">
+              <Link to="/" className="hover:opacity-80 transition-opacity" aria-label="Dragvertising Home">
+                <Sparkles className="h-8 w-8 text-primary" />
+              </Link>
+            </div>
+
+            {/* Header */}
+            <div className="text-center lg:text-left space-y-2">
+              <h1 className="text-4xl lg:text-5xl font-bold text-foreground">
+                Reset Password
+              </h1>
+              <p className="text-lg text-muted-foreground">
+                Enter your email and we'll send you a reset link
+              </p>
+            </div>
+
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              {error && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {resetEmailSent ? (
+                <div className="p-4 bg-muted rounded-lg text-center">
+                  <p className="text-sm">
+                    We've sent a password reset link to <strong>{email}</strong>. 
+                    Check your email and click the link to reset your password.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder="name@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isSubmitting}
+                      className="h-12"
+                    />
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    variant="gradient"
+                    size="lg"
+                    className="w-full h-12 font-semibold text-base" 
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Sending...</span>
+                      </div>
+                    ) : (
+                      'Send Reset Link'
+                    )}
+                  </Button>
+                </>
+              )}
+
+              <div className="text-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setResetEmailSent(false);
+                    setError(null);
+                  }}
+                >
+                  Back to {isSignUp ? 'Sign Up' : 'Login'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Right Side - Illustration */}
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-600 via-[#FD0290] to-[#FFA726] p-12 relative overflow-hidden">
+          {/* Abstract Background Elements */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl" />
+          </div>
+
+          {/* Illustration Content */}
+          <div className="relative z-10 max-w-lg space-y-8 text-center">
+            <div className="space-y-6">
+              {/* Stylized Interface Representation */}
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-2xl">
+                <div className="space-y-4">
+                  {/* Header Row */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+                        <Crown className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="h-3 w-24 bg-white/30 rounded" />
+                        <div className="h-2 w-16 bg-white/20 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Content Rows */}
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-white/20" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-2 bg-white/30 rounded w-3/4" />
+                          <div className="h-2 bg-white/20 rounded w-1/2" />
+                        </div>
+                        <div className="w-16 h-6 bg-white/20 rounded" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Feature Highlights */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                  <Users className="h-6 w-6 text-white mb-2 mx-auto" />
+                  <p className="text-sm text-white/90 font-medium">Connect Talent</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                  <Calendar className="h-6 w-6 text-white mb-2 mx-auto" />
+                  <p className="text-sm text-white/90 font-medium">Book Shows</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                  <DollarSign className="h-6 w-6 text-white mb-2 mx-auto" />
+                  <p className="text-sm text-white/90 font-medium">Get Paid</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                  <Music className="h-6 w-6 text-white mb-2 mx-auto" />
+                  <p className="text-sm text-white/90 font-medium">Manage Events</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold text-white">
+                The Operating System for Drag Entertainment
+              </h2>
+              <p className="text-white/80 text-lg">
+                One platform connecting every role in the industry
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Show landing page
+  // Main login/signup view
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md space-y-8">
-        {/* Logo and Header */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center mb-4">
-            <MessageSquare className="h-12 w-12 text-primary" />
+    <div className="min-h-screen flex flex-col lg:flex-row bg-background">
+      {/* Left Side - Login Form */}
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-background">
+        <div className="w-full max-w-md space-y-8">
+          {/* Logo */}
+          <div className="flex justify-center lg:justify-start">
+            <Link to="/" className="hover:opacity-80 transition-opacity" aria-label="Dragvertising Home">
+              <Sparkles className="h-8 w-8 text-primary" />
+            </Link>
           </div>
-          <h1 className="text-3xl font-bold">Dragvertising Messenger</h1>
-          <p className="text-muted-foreground">
-            Connect with talent, producers, and fans
-          </p>
-        </div>
 
-        {/* Auth Form */}
-        <div className="bg-card border rounded-lg p-6 space-y-4">
-          {hasExistingSession && !showForgotPassword ? (
-            <>
-              <div className="space-y-2">
-                <h2 className="text-xl font-semibold">Continue with your account</h2>
-                <p className="text-sm text-muted-foreground">
-                  You're already signed in as {email}
-                </p>
+          {/* Header */}
+          <div className="text-center lg:text-left space-y-2">
+            <h1 className="text-4xl lg:text-5xl font-bold text-foreground">
+              {isSignUp ? 'Welcome to Dragvertising' : 'Welcome Back'}
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              {isSignUp ? "Get started - it's free. No credit card needed." : "Sign in to your account"}
+            </p>
+          </div>
+
+          {/* Email/Password Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <span>{error}</span>
               </div>
+            )}
 
-              <div className="space-y-3">
+            <div className="space-y-1">
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isSubmitting}
+                className="h-12"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder={isSignUp ? 'Password (min 8 characters)' : 'Enter your password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isSubmitting}
+                  className="h-12 pr-10"
+                  minLength={isSignUp ? 8 : undefined}
+                />
                 <Button
                   type="button"
-                  className="w-full"
-                  onClick={handleContinue}
-                  disabled={isSubmitting}
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-12 px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Continuing...
-                    </>
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    'Continue to Messenger'
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
+              </div>
+            </div>
 
+            {!isSignUp && (
+              <div className="flex items-center justify-end">
                 <Button
                   type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    setHasExistingSession(false);
-                    setError(null);
-                  }}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="h-auto p-0 text-xs text-foreground/80 hover:text-foreground"
                   disabled={isSubmitting}
                 >
-                  Sign in with a different account
+                  Forgot password?
                 </Button>
               </div>
-            </>
-          ) : showForgotPassword ? (
-            <>
-              <div className="space-y-2">
-                <h2 className="text-xl font-semibold">Reset Password</h2>
-                <p className="text-sm text-muted-foreground">
-                  {resetEmailSent
-                    ? 'Check your email for the password reset link.'
-                    : 'Enter your email and we\'ll send you a reset link.'}
-                </p>
-              </div>
+            )}
 
-              {resetEmailSent ? (
-                <div className="space-y-4">
-                  <div className="p-4 bg-muted rounded-lg text-center">
-                    <p className="text-sm">Email sent to {email}</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setShowForgotPassword(false);
-                      setResetEmailSent(false);
-                    }}
-                  >
-                    Back to Login
-                  </Button>
+            <Button 
+              type="submit" 
+              variant="gradient"
+              size="lg"
+              className="w-full h-12 font-semibold text-base" 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>{isSignUp ? 'Creating Account...' : 'Signing In...'}</span>
                 </div>
               ) : (
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  {error && (
-                    <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <span>{error}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Input
-                      id="reset-email"
-                      type="email"
-                      placeholder="name@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      disabled={isSubmitting}
-                      className="h-11"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      'Send Reset Link'
-                    )}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full"
-                    onClick={() => {
-                      setShowForgotPassword(false);
-                      setError(null);
-                    }}
-                    disabled={isSubmitting}
-                  >
-                    Back to Login
-                  </Button>
-                </form>
+                isSignUp ? 'Create Account' : 'Continue'
               )}
-            </>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <h2 className="text-xl font-semibold">
-                  {isSignUp ? 'Create Account' : 'Welcome Back'}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {isSignUp
-                    ? 'Sign up to start messaging'
-                    : 'Sign in to your account'}
-                </p>
-              </div>
+            </Button>
+          </form>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {error && (
-                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{error}</span>
-                  </div>
-                )}
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-background px-2 text-muted-foreground">Or</span>
+            </div>
+          </div>
 
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="name@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      disabled={isSubmitting}
-                      className="h-11 pl-10"
-                    />
-                  </div>
-                </div>
+          {/* OAuth Buttons */}
+          <div className="space-y-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 border border-input bg-background hover:bg-accent hover:text-accent-foreground font-medium shadow-sm hover:shadow transition-all"
+              onClick={handleGoogleLogin}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto" />
+              ) : (
+                <>
+                  <Chrome className="mr-3 h-5 w-5" />
+                  Continue with Google
+                </>
+              )}
+            </Button>
+            
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-12 border border-input bg-background hover:bg-accent hover:text-accent-foreground font-medium shadow-sm hover:shadow transition-all"
+              onClick={handleFacebookLogin}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto" />
+              ) : (
+                <>
+                  <svg className="mr-3 h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fillRule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" clipRule="evenodd" />
+                  </svg>
+                  Continue with Facebook
+                </>
+              )}
+            </Button>
+          </div>
 
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder={isSignUp ? 'Password (min 8 characters)' : 'Enter your password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      disabled={isSubmitting}
-                      className="h-11 pl-10 pr-10"
-                      minLength={isSignUp ? 8 : undefined}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-11 px-3 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {!isSignUp && (
-                  <div className="flex items-center justify-end">
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="h-auto p-0 text-sm"
-                      onClick={() => setShowForgotPassword(true)}
-                      disabled={isSubmitting}
-                    >
-                      Forgot password?
-                    </Button>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {isSignUp ? 'Creating...' : 'Signing in...'}
-                    </>
-                  ) : (
-                    isSignUp ? 'Sign Up' : 'Sign In'
-                  )}
+          {/* Sign up/Sign in Link */}
+          <p className="text-center text-sm text-muted-foreground">
+            {isSignUp ? (
+              <>
+                Already have an account?{" "}
+                <Button variant="link" className="p-0 h-auto font-semibold text-primary hover:text-primary/80" onClick={() => setIsSignUp(false)}>
+                  Log in
                 </Button>
-              </form>
-
-              <div className="text-center text-sm">
-                <Button
-                  type="button"
-                  variant="link"
-                  className="h-auto p-0"
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setError(null);
-                    setPassword('');
-                  }}
-                  disabled={isSubmitting}
-                >
-                  {isSignUp
-                    ? 'Already have an account? Sign in'
-                    : "Don't have an account? Sign up"}
+              </>
+            ) : (
+              <>
+                Don't have an account?{" "}
+                <Button variant="link" className="p-0 h-auto font-semibold text-primary hover:text-primary/80" onClick={() => setIsSignUp(true)}>
+                  Sign up
                 </Button>
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {/* Right Side - Illustration */}
+      <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-600 via-[#FD0290] to-[#FFA726] p-12 relative overflow-hidden">
+        {/* Abstract Background Elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl" />
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-muted-foreground">
-          By continuing, you agree to Dragvertising's Terms of Service
-        </p>
+        {/* Illustration Content */}
+        <div className="relative z-10 max-w-lg space-y-8 text-center">
+          <div className="space-y-6">
+            {/* Stylized Interface Representation */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-2xl">
+              <div className="space-y-4">
+                {/* Header Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+                      <Crown className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="h-3 w-24 bg-white/30 rounded" />
+                      <div className="h-2 w-16 bg-white/20 rounded" />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Content Rows */}
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white/20" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-2 bg-white/30 rounded w-3/4" />
+                        <div className="h-2 bg-white/20 rounded w-1/2" />
+                      </div>
+                      <div className="w-16 h-6 bg-white/20 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Feature Highlights */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <Users className="h-6 w-6 text-white mb-2 mx-auto" />
+                <p className="text-sm text-white/90 font-medium">Connect Talent</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <Calendar className="h-6 w-6 text-white mb-2 mx-auto" />
+                <p className="text-sm text-white/90 font-medium">Book Shows</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <DollarSign className="h-6 w-6 text-white mb-2 mx-auto" />
+                <p className="text-sm text-white/90 font-medium">Get Paid</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                <Music className="h-6 w-6 text-white mb-2 mx-auto" />
+                <p className="text-sm text-white/90 font-medium">Manage Events</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-white">
+              The Operating System for Drag Entertainment
+            </h2>
+            <p className="text-white/80 text-lg">
+              One platform connecting every role in the industry
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-

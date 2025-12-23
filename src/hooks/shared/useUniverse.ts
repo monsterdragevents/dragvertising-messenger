@@ -37,7 +37,11 @@ export function useUniverse() {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        setAvailableUniverses(data);
+        // Filter out galaxy_holder and superadmin universes - they don't have messaging access
+        const filteredUniverses = data.filter(
+          u => u.role !== 'galaxy_holder' && u.role !== 'superadmin'
+        );
+        setAvailableUniverses(filteredUniverses);
       }
     } catch (error) {
       console.error('Error loading available universes:', error);
@@ -70,18 +74,26 @@ export function useUniverse() {
             .maybeSingle();
 
           if (!error && data) {
-            setUniverse(data);
-            setIsLoading(false);
-            return;
+            // Don't set galaxy_holder or superadmin universes - they don't have messaging access
+            if (data.role !== 'galaxy_holder' && data.role !== 'superadmin') {
+              setUniverse(data);
+              setIsLoading(false);
+              return;
+            } else {
+              // Clear invalid stored universe
+              localStorage.removeItem('active_universe_id');
+            }
           }
         }
 
-        // Fallback: Get first active universe
+        // Fallback: Get first active universe (excluding galaxy_holder and superadmin)
         const { data: universes, error } = await supabase
           .from('profile_universes')
           .select('id, handle, display_name, avatar_url, role')
           .eq('user_id', user.id)
           .eq('status', 'active')
+          .neq('role', 'galaxy_holder')
+          .neq('role', 'superadmin')
           .limit(1);
 
         if (!error && universes && universes.length > 0) {

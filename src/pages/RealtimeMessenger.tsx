@@ -41,7 +41,6 @@ import {
   Search, 
   Send, 
   UserPlus,
-  Settings,
   Paperclip,
   Loader2,
   Users,
@@ -60,7 +59,14 @@ import {
   CheckCheck,
   Check,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  User,
+  Lock,
+  ExternalLink,
+  ShoppingBag,
+  BookOpen,
+  Music,
+  Briefcase
 } from 'lucide-react';
 import { EmojiPicker } from '@/components/shared/EmojiPicker';
 import { VideoCallDialog } from '@/components/shared/VideoCallDialog';
@@ -156,33 +162,13 @@ interface OnlineUser {
 
 export default function RealtimeMessenger() {
   const { user, session, loading: authLoading } = useAuth();
-  const { universe, isLoading: universeLoading, availableUniverses } = useUniverse();
+  const { universe, isLoading: universeLoading, availableUniverses, switchUniverse } = useUniverse();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Redirect to landing page if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/', { replace: true });
-    }
-  }, [user, authLoading, navigate]);
-
-  // Show loading while checking auth
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render if not authenticated (will redirect)
-  if (!user) {
-    return null;
-  }
+  // =====================================================
+  // ALL HOOKS MUST BE DECLARED BEFORE ANY EARLY RETURNS
+  // =====================================================
   
   // State
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -191,6 +177,7 @@ export default function RealtimeMessenger() {
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'unread' | 'pinned' | 'archived'>('all');
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingIndicator>>(new Map());
@@ -237,6 +224,8 @@ export default function RealtimeMessenger() {
   const [showSidebar, setShowSidebar] = useState(true);
   // Desktop sidebar collapsed state (shows only avatars when collapsed)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  // Right sidebar (profile) visibility state - hidden by default, shown when conversation selected
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
   
   // Message interaction state
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -250,9 +239,22 @@ export default function RealtimeMessenger() {
   const conversationChannelRef = useRef<RealtimeChannel | null>(null);
   const presenceChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadConversationsRef = useRef<typeof loadConversations | null>(null);
+  const loadMessagesRef = useRef<typeof loadMessages | null>(null);
   
   // Get conversation ID from URL
   const conversationIdFromUrl = searchParams.get('conversation');
+
+  // =====================================================
+  // ALL CALLBACKS, EFFECTS, AND MEMOS (before early returns)
+  // =====================================================
+  
+  // Redirect to landing page if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, authLoading, navigate]);
 
   // =====================================================
   // SCROLL TO BOTTOM
@@ -322,6 +324,7 @@ export default function RealtimeMessenger() {
       if (conversationIds.length === 0) {
         setConversations([]);
         setIsLoading(false);
+        setIsInitialLoad(false);
         return;
       }
 
@@ -728,6 +731,7 @@ export default function RealtimeMessenger() {
       toast.error('Failed to load conversations');
     } finally {
       setIsLoading(false);
+      setIsInitialLoad(false);
     }
   }, [universe?.id, user?.id]);
 
@@ -1965,20 +1969,66 @@ export default function RealtimeMessenger() {
   // =====================================================
   // LOAD DATA ON MOUNT AND WHEN UNIVERSE CHANGES
   // =====================================================
+  const previousUniverseIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (universe?.id) {
-      // Clear selected conversation when universe changes
+    // Only clear and reload if universe actually changed (not on initial mount)
+    if (universe?.id && previousUniverseIdRef.current !== undefined && previousUniverseIdRef.current !== universe.id) {
+      // Clear all conversation-related state when universe changes
       setSelectedConversation(null);
-      // Reload conversations for new universe
-      loadConversations();
+      setMessages([]);
+      setTypingUsers(new Map());
+      setOnlineUsers(new Map());
+      setNewMessage('');
+      setSearchQuery('');
+      
+      // Clear new message dialog state
+      setIsNewMessageDialogOpen(false);
+      setNewMessageSearchQuery('');
+      setNewMessageSearchResults([]);
+      setSelectedRecipients([]);
+      setIsGroupMode(false);
+      
+      // Clear message editing/reply state
+      setEditingMessageId(null);
+      setEditingMessageContent('');
+      setReplyingToMessageId(null);
+      setShowReactionPicker(null);
+      
+      // Clear conversation from URL
+      setSearchParams({}, { replace: true });
+      
+      // Clear conversations immediately to show empty state
+      setConversations([]);
     }
-  }, [universe?.id, loadConversations]);
+    
+    // Update the ref
+    previousUniverseIdRef.current = universe?.id;
+    
+    // Load conversations for current universe (on mount or when universe changes)
+    if (universe?.id) {
+      // Mark that initial load is complete (so we don't show full-page loader)
+      setIsInitialLoad(false);
+      
+      // Reload conversations for new universe (without blocking UI)
+      loadConversationsRef.current?.();
+    }
+  }, [universe?.id, setSearchParams]); // Removed loadConversations from deps to prevent clearing on every render
+  
+  // Update refs when callbacks change
+  useEffect(() => {
+    loadConversationsRef.current = loadConversations;
+  }, [loadConversations]);
+  
+  useEffect(() => {
+    loadMessagesRef.current = loadMessages;
+  }, [loadMessages]);
 
   // =====================================================
   // LOAD MESSAGES WHEN CONVERSATION CHANGES
   // =====================================================
   useEffect(() => {
     if (selectedConversation?.id) {
+      // Always call loadMessages directly - it's stable via useCallback
       loadMessages(selectedConversation.id);
     }
   }, [selectedConversation?.id, loadMessages]);
@@ -1998,6 +2048,76 @@ export default function RealtimeMessenger() {
       }
     }
   }, [conversationIdFromUrl, conversations]);
+
+  // =====================================================
+  // AUTO-SHOW RIGHT SIDEBAR ON DESKTOP
+  // =====================================================
+  useEffect(() => {
+    // Don't auto-manage sidebar if user manually toggled it on mobile
+    // Only auto-manage on desktop
+    const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+    
+    if (!isDesktop) {
+      // On mobile, only hide if conversation is deselected
+      if (!selectedConversation) {
+        setShowRightSidebar(false);
+      }
+      return;
+    }
+
+    // Desktop behavior
+    if (!universe || !selectedConversation) {
+      if (!selectedConversation) {
+        setShowRightSidebar(false);
+      }
+      return;
+    }
+
+    // Check if this is a direct message with valid participant
+    const otherParticipants = selectedConversation.participants.filter(
+      p => p.profile_universe_id !== universe.id
+    );
+    const otherParticipant = otherParticipants[0];
+    const participant = otherParticipant?.profile_universe || null;
+    const isGroup = selectedConversation.type === 'group';
+    const isShow = selectedConversation.type === 'show';
+    
+    // Only show for direct messages with valid participant
+    if (!isGroup && !isShow && participant) {
+      // Use a small delay to ensure participant data is loaded
+      const timer = setTimeout(() => {
+        setShowRightSidebar(true);
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      setShowRightSidebar(false);
+    }
+  }, [selectedConversation, universe, selectedConversation?.participants]);
+
+  // Listen for window resize to update sidebar visibility
+  useEffect(() => {
+    const handleResize = () => {
+      if (!universe || !selectedConversation) return;
+      
+      const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+      const otherParticipants = selectedConversation.participants.filter(
+        p => p.profile_universe_id !== universe.id
+      );
+      const otherParticipant = otherParticipants[0];
+      const participant = otherParticipant?.profile_universe || null;
+      const isGroup = selectedConversation.type === 'group';
+      const isShow = selectedConversation.type === 'show';
+      
+      if (isDesktop && !isGroup && !isShow && participant) {
+        setShowRightSidebar(true);
+      } else if (!isDesktop) {
+        setShowRightSidebar(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedConversation, universe]);
 
   // =====================================================
   // FILTER CONVERSATIONS
@@ -2063,18 +2183,9 @@ export default function RealtimeMessenger() {
   }, [typingUsers]);
 
   // =====================================================
-  // HANDLERS (Must be before early returns)
+  // HANDLERS (must be before early returns if they use hooks)
   // =====================================================
-  const handleNewMessage = () => {
-    setIsNewMessageDialogOpen(true);
-  };
-
-  const handleBackToConversations = () => {
-    setSelectedConversation(null);
-    setSearchParams({});
-    setShowSidebar(true);
-  };
-
+  
   // Search for users to message
   const searchUsersForMessage = useCallback(async (query: string) => {
     if (!query.trim() || query.length < 2) {
@@ -2201,40 +2312,190 @@ export default function RealtimeMessenger() {
   }, [universe?.id, user?.id, conversations, loadConversations, setSearchParams, isGroupMode, selectedRecipients]);
 
   // =====================================================
-  // LOADING STATE (After all hooks)
+  // EARLY RETURNS (after all hooks)
   // =====================================================
-  if (universeLoading || isLoading) {
-    return <PageLoading />;
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
-  // Check authentication
+  // Don't render if not authenticated (will redirect)
   if (!user) {
+    return null;
+  }
+
+  // Wait for universe to load before checking role
+  if (universeLoading || (isLoading && isInitialLoad)) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center space-y-4">
-          <p className="text-muted-foreground">Please log in to access messages</p>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
-  if (!universe) {
+  // Block galaxy holders from accessing messenger
+  if (universe?.role === 'galaxy_holder' || universe?.role === 'superadmin') {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center space-y-4">
-          <p className="text-muted-foreground">Please select a universe to access messages</p>
-          <p className="text-sm text-muted-foreground">Universe selection will be available soon</p>
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="max-w-md w-full text-center space-y-4">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-foreground">Messaging Not Available</h1>
+            <p className="text-muted-foreground">
+              Galaxy holders do not have access to messaging. Please switch to a different universe to use messaging.
+            </p>
+          </div>
+          {availableUniverses.filter(u => u.role !== 'galaxy_holder' && u.role !== 'superadmin').length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Available universes with messaging:</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {availableUniverses
+                  .filter(u => u.role !== 'galaxy_holder' && u.role !== 'superadmin')
+                  .map(u => (
+                    <button
+                      key={u.id}
+                      onClick={async () => {
+                        await switchUniverse(u.id);
+                        // The component will re-render with the new universe
+                      }}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+                    >
+                      {u.display_name}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   }
+
+  // =====================================================
+  // HANDLERS (non-hook handlers)
+  // =====================================================
+  const handleNewMessage = () => {
+    setIsNewMessageDialogOpen(true);
+  };
+
+  const handleBackToConversations = () => {
+    setSelectedConversation(null);
+    setSearchParams({});
+    setShowSidebar(true);
+    setShowRightSidebar(false);
+  };
 
   // =====================================================
   // RENDER
   // =====================================================
   return (
     <>
-    <div className="h-screen flex bg-background relative overflow-hidden">
+    {/* Navigation Header */}
+    <div className="border-b bg-card/95 backdrop-blur sticky top-0 z-50">
+      <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
+        <a
+          href={(import.meta.env.VITE_MAIN_APP_URL || (import.meta.env.DEV ? 'http://localhost:3000' : 'https://dragvertising.app')).replace(/\/$/, '')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity group"
+          aria-label="Go to Dragvertising main app"
+        >
+          <img 
+            src="/dragvertising-logo.png" 
+            alt="Dragvertising" 
+            className="h-6 w-auto group-hover:scale-105 transition-transform"
+          />
+          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        </a>
+        
+        {/* Right Side Navigation */}
+        <div className="flex items-center gap-2">
+          {/* Navigation Icons */}
+          {(() => {
+            // Always use the main app URL - on subdomain, this should be the root domain
+            const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || (import.meta.env.DEV ? 'http://localhost:3000' : 'https://dragvertising.app');
+            // Ensure we have a proper URL (no trailing slash)
+            const baseUrl = mainAppUrl.replace(/\/$/, '');
+            
+            return (
+              <div className="hidden md:flex items-center gap-1">
+                <a
+                  href={`${baseUrl}/feed`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg hover:bg-accent transition-colors"
+                  title="Feed"
+                >
+                  <MessageSquare className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </a>
+                <a
+                  href={`${baseUrl}/browse/talent`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg hover:bg-accent transition-colors"
+                  title="Talent"
+                >
+                  <Users className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </a>
+                <a
+                  href={`${baseUrl}/browse/djs`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg hover:bg-accent transition-colors"
+                  title="DJs"
+                >
+                  <Music className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </a>
+                <a
+                  href={`${baseUrl}/browse/shows`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg hover:bg-accent transition-colors"
+                  title="Shows"
+                >
+                  <Briefcase className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </a>
+                <a
+                  href={`${baseUrl}/market`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg hover:bg-accent transition-colors"
+                  title="Shop"
+                >
+                  <ShoppingBag className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </a>
+                <a
+                  href={`${baseUrl}/blog`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg hover:bg-accent transition-colors"
+                  title="Blog"
+                >
+                  <BookOpen className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </a>
+              </div>
+            );
+          })()}
+          
+          {/* Universe Switcher */}
+          <div className="flex items-center">
+            <UniverseSwitcher />
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div className="h-[calc(100vh-57px)] flex bg-background relative overflow-hidden">
         {/* Mobile Overlay */}
         {showSidebar && (
           <div 
@@ -2246,8 +2507,9 @@ export default function RealtimeMessenger() {
         {/* Conversations List */}
         <div className={cn(
           "flex-shrink-0 border-r bg-card flex flex-col transition-all duration-300 ease-in-out",
-          "w-full md:w-96",
+          "w-full sm:w-80 md:w-96",
           "absolute md:relative inset-0 z-20 md:z-auto",
+          "min-w-0 max-w-full overflow-hidden",
           showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0",
           isSidebarCollapsed && "md:w-16"
         )}>
@@ -2277,8 +2539,6 @@ export default function RealtimeMessenger() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  {/* Universe Switcher */}
-                  <UniverseSwitcher />
                   <Button 
                     variant="ghost" 
                     size="icon"
@@ -2362,7 +2622,7 @@ export default function RealtimeMessenger() {
           </div>
 
           {/* Conversations List */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-w-0">
             {filteredConversations.length === 0 ? (
               !isSidebarCollapsed ? (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -2383,7 +2643,7 @@ export default function RealtimeMessenger() {
               ) : null
             ) : (
               <div className={cn(
-                "p-1 md:p-2 space-y-0.5",
+                "p-1 md:p-2 space-y-0.5 w-full min-w-0",
                 isSidebarCollapsed && "md:p-2 md:space-y-2"
               )}>
                 {filteredConversations.map((conversation) => {
@@ -2444,15 +2704,35 @@ export default function RealtimeMessenger() {
                     <button
                       key={conversation.id}
                       onClick={() => {
+                        if (!universe) return;
                         setSelectedConversation(conversation);
                         setSearchParams({ conversation: conversation.id });
-                        // Hide sidebar on mobile when conversation is selected
+                        // Hide left sidebar on mobile when conversation is selected
                         if (window.innerWidth < 768) {
                           setShowSidebar(false);
                         }
+                        // Show right sidebar on desktop for direct messages
+                        const isDesktop = window.innerWidth >= 1024;
+                        if (isDesktop) {
+                          const otherParticipants = conversation.participants.filter(
+                            p => p.profile_universe_id !== universe.id
+                          );
+                          const otherParticipant = otherParticipants[0];
+                          const participant = otherParticipant?.profile_universe || null;
+                          const isGroup = conversation.type === 'group';
+                          const isShow = conversation.type === 'show';
+                          if (!isGroup && !isShow && participant) {
+                            // Small delay to ensure conversation is fully selected
+                            setTimeout(() => {
+                              setShowRightSidebar(true);
+                            }, 50);
+                          } else {
+                            setShowRightSidebar(false);
+                          }
+                        }
                       }}
                       className={cn(
-                        "w-full transition-all group",
+                        "w-full transition-all group min-w-0 max-w-full",
                         isSidebarCollapsed 
                           ? "md:p-2 md:flex md:justify-center" 
                           : "p-2 md:p-3 rounded-lg md:rounded-xl text-left hover:bg-accent/50 active:scale-[0.98]",
@@ -2525,10 +2805,10 @@ export default function RealtimeMessenger() {
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1 md:gap-2 mb-0.5 md:mb-1">
+                          <div className="flex-1 min-w-0 max-w-full overflow-hidden">
+                            <div className="flex items-center justify-between gap-1 md:gap-2 mb-0.5 md:mb-1 min-w-0">
                               <p className={cn(
-                                "font-semibold text-xs md:text-sm truncate",
+                                "font-semibold text-xs md:text-sm truncate min-w-0 flex-1",
                                 conversation.unread_count > 0 && "font-bold"
                               )}>
                                 {displayName}
@@ -2541,9 +2821,9 @@ export default function RealtimeMessenger() {
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 md:gap-2">
+                            <div className="flex items-center gap-1.5 md:gap-2 min-w-0">
                               <p className={cn(
-                                "text-xs md:text-sm truncate flex-1",
+                                "text-xs md:text-sm truncate flex-1 min-w-0",
                                 conversation.unread_count > 0 
                                   ? "text-foreground font-medium" 
                                   : "text-muted-foreground"
@@ -2571,22 +2851,24 @@ export default function RealtimeMessenger() {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 flex flex-col bg-background relative">
-          {/* Toggle Sidebar Button (when collapsed, show on main content) */}
-          {isSidebarCollapsed && (
-            <div className="absolute left-2 top-4 z-10 md:block hidden">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 bg-card border border-border shadow-sm"
-                onClick={() => setIsSidebarCollapsed(false)}
-                title="Expand sidebar"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-          {selectedConversation ? (
+        <div className="flex-1 flex bg-background relative overflow-hidden">
+          {/* Main Chat Area */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* Toggle Sidebar Button (when collapsed, show on main content) */}
+            {isSidebarCollapsed && (
+              <div className="absolute left-2 top-4 z-10 md:block hidden">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 bg-card border border-border shadow-sm"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  title="Expand sidebar"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            {selectedConversation ? (
             <>
               {/* Header */}
               <div className="border-b p-3 md:p-4 flex items-center justify-between bg-card/50 backdrop-blur sticky top-0 z-10">
@@ -2712,13 +2994,18 @@ export default function RealtimeMessenger() {
                                   return;
                                 }
 
-                                setVideoCallParticipant({
+                                const participantData = {
                                   userId: profileUniverse.user_id,
                                   universeId: participant.id,
                                   userName: participant.display_name,
                                   userAvatar: participant.avatar_url || undefined
+                                };
+                                // Set participant first, then open dialog after state update
+                                setVideoCallParticipant(participantData);
+                                // Use requestAnimationFrame to ensure state is set
+                                requestAnimationFrame(() => {
+                                  setIsVideoCallOpen(true);
                                 });
-                                setIsVideoCallOpen(true);
                               } catch (error) {
                                 console.error('Error starting video call:', error);
                                 toast.error('Unable to start video call');
@@ -2727,6 +3014,18 @@ export default function RealtimeMessenger() {
                             title="Start video call"
                           >
                             <Video className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {/* Toggle right sidebar button */}
+                        {!isGroup && !isShow && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 hidden lg:flex"
+                            onClick={() => setShowRightSidebar(!showRightSidebar)}
+                            title={showRightSidebar ? "Hide profile" : "Show profile"}
+                          >
+                            <ChevronRight className={cn("h-4 w-4 transition-transform", showRightSidebar && "rotate-180")} />
                           </Button>
                         )}
                         <DropdownMenu>
@@ -2741,6 +3040,15 @@ export default function RealtimeMessenger() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {!isGroup && !isShow && (
+                              <DropdownMenuItem
+                                onClick={() => setShowRightSidebar(!showRightSidebar)}
+                                className="lg:hidden"
+                              >
+                                <User className="h-4 w-4 mr-2" />
+                                {showRightSidebar ? 'Hide' : 'Show'} Profile
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={() => {
                                 const isPinned = selectedConversation.participants.find(
@@ -3290,6 +3598,168 @@ export default function RealtimeMessenger() {
               </div>
             </div>
           )}
+          </div>
+
+          {/* Right Sidebar - Profile */}
+          {selectedConversation && universe && (() => {
+            const otherParticipants = selectedConversation.participants.filter(
+              p => p.profile_universe_id !== universe.id
+            );
+            const otherParticipant = otherParticipants[0];
+            const participant = otherParticipant?.profile_universe || null;
+            const isGroup = selectedConversation.type === 'group';
+            const isShow = selectedConversation.type === 'show';
+            const isOnline = participant && onlineUsers.has(participant.id);
+
+            // Don't show profile sidebar for groups/shows
+            if (isGroup || isShow || !participant) return null;
+
+            return (
+              <>
+                {/* Mobile Overlay */}
+                {showRightSidebar && (
+                  <div 
+                    className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+                    onClick={() => setShowRightSidebar(false)}
+                  />
+                )}
+                
+                {/* Right Sidebar */}
+                <div className={cn(
+                  "flex-shrink-0 border-l bg-card flex flex-col transition-all duration-300 ease-in-out",
+                  "w-full sm:w-80 lg:w-80",
+                  "fixed lg:relative inset-0 z-40 lg:z-auto",
+                  // On mobile: slide in/out based on showRightSidebar
+                  // On desktop (lg): show when showRightSidebar is true, hide when false
+                  showRightSidebar 
+                    ? "translate-x-0 lg:block" 
+                    : "translate-x-full lg:hidden"
+                )}>
+                  {/* Header */}
+                  <div className="p-4 border-b bg-card/95 backdrop-blur">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold">Profile</h3>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 lg:hidden"
+                        onClick={() => setShowRightSidebar(false)}
+                        title="Close profile"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Profile Content */}
+                  <ScrollArea className="flex-1">
+                    <div className="p-4 space-y-6">
+                      {/* Profile Header */}
+                      <div className="flex flex-col items-center text-center space-y-4">
+                        <div className="relative">
+                          <Avatar className="h-24 w-24 ring-4 ring-background">
+                            <AvatarImage src={participant.avatar_url || undefined} alt={participant.display_name} />
+                            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary text-2xl font-semibold">
+                              {participant.display_name?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          {isOnline && (
+                            <div className="absolute bottom-0 right-0 w-5 h-5 bg-green-500 rounded-full border-4 border-background ring-2 ring-green-500/20" />
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <h2 className="text-xl font-bold">{participant.display_name}</h2>
+                          {participant.handle && (
+                            <p className="text-sm text-muted-foreground">@{participant.handle}</p>
+                          )}
+                          <div className="flex items-center justify-center gap-2 mt-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {participant.role.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                            </Badge>
+                            {isOnline && (
+                              <Badge variant="default" className="text-xs bg-green-500">
+                                Online
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Encryption Status */}
+                      <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+                        <Lock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">End-to-end encrypted</span>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex flex-col items-center gap-1 h-auto py-3"
+                        >
+                          <User className="h-4 w-4" />
+                          <span className="text-xs">Profile</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex flex-col items-center gap-1 h-auto py-3"
+                          onClick={() => {
+                            const isMuted = selectedConversation.participants.find(
+                              p => p.profile_universe_id === universe.id
+                            )?.is_muted;
+                            handleMuteConversation(selectedConversation.id, !isMuted);
+                          }}
+                        >
+                          {selectedConversation.participants.find(
+                            p => p.profile_universe_id === universe.id
+                          )?.is_muted ? (
+                            <Bell className="h-4 w-4" />
+                          ) : (
+                            <BellOff className="h-4 w-4" />
+                          )}
+                          <span className="text-xs">
+                            {selectedConversation.participants.find(
+                              p => p.profile_universe_id === universe.id
+                            )?.is_muted ? "Unmute" : "Mute"}
+                          </span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex flex-col items-center gap-1 h-auto py-3"
+                        >
+                          <Search className="h-4 w-4" />
+                          <span className="text-xs">Search</span>
+                        </Button>
+                      </div>
+
+                      {/* Settings Sections */}
+                      <div className="space-y-1">
+                        <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-accent transition-colors text-left">
+                          <span className="text-sm font-medium">Chat info</span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                        <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-accent transition-colors text-left">
+                          <span className="text-sm font-medium">Customize chat</span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                        <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-accent transition-colors text-left">
+                          <span className="text-sm font-medium">Media & files</span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                        <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-accent transition-colors text-left">
+                          <span className="text-sm font-medium">Privacy & support</span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </div>
+                  </ScrollArea>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -3442,10 +3912,18 @@ export default function RealtimeMessenger() {
       </Dialog>
 
       {/* Video Call Dialog */}
-      {videoCallParticipant && selectedConversation && (
+      {videoCallParticipant && selectedConversation && isVideoCallOpen && (
         <VideoCallDialog
           open={isVideoCallOpen}
-          onOpenChange={setIsVideoCallOpen}
+          onOpenChange={(open) => {
+            setIsVideoCallOpen(open);
+            if (!open) {
+              // Clear participant when dialog closes to prevent re-opening
+              setTimeout(() => {
+                setVideoCallParticipant(null);
+              }, 300);
+            }
+          }}
           conversationId={selectedConversation.id}
           remoteUserId={videoCallParticipant.userId}
           remoteUniverseId={videoCallParticipant.universeId}

@@ -55,13 +55,16 @@ dragvertising-messenger/
 - Supabase account and project (same as main Dragvertising app)
 
 ### Environment Setup
-Create `.env.local` and configure:
+Create `.env.local` (copy from `.env.example`) and configure:
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_MAIN_APP_URL=https://dragvertising.app
 ```
 
-**Note:** This messenger uses the **same Supabase instance** as the main Dragvertising app, so you can use the same credentials.
+**Note:** 
+- This messenger uses the **same Supabase instance** as the main Dragvertising app, so you can use the same credentials
+- The `VITE_MAIN_APP_URL` should point to your main Dragvertising app URL (or `http://localhost:3000` for local development)
 
 ### Commands
 ```bash
@@ -126,14 +129,33 @@ npm run typecheck    # Type check
 
 ## 🔗 Integration with Main App
 
-This messenger is designed to work alongside the main Dragvertising app:
+This messenger is a **child application** of the main Dragvertising app (`DragvertisingApp`). It's designed to work alongside the main app:
+
+### Directory Structure
+```
+/Users/michaelryanwhitson/
+├── DragvertisingApp/          # Main Dragvertising application
+└── dragvertising-messenger/   # This messenger (child app)
+```
+
+### Integration Points
 
 1. **Shared Database**: Uses the same Supabase project
 2. **Shared Auth**: Same authentication system
 3. **Shared Universe System**: Same universe/role system
 4. **Standalone UI**: Independent interface optimized for messaging
+5. **Navigation Link**: Header links back to main app via `VITE_MAIN_APP_URL`
 
-Users can access the messenger at a separate URL while maintaining the same authentication and universe context.
+### Configuration
+
+Set the main app URL in your `.env.local`:
+```env
+VITE_MAIN_APP_URL=https://dragvertising.app
+# Or for local development:
+# VITE_MAIN_APP_URL=http://localhost:3000
+```
+
+Users can access the messenger at a separate URL (e.g., `messenger.dragvertising.com`) while maintaining the same authentication and universe context, and can easily navigate back to the main app via the header logo.
 
 ### Video Calling & Android Integration
 
