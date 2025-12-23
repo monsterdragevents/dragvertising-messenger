@@ -1,5 +1,14 @@
 /** @type {import('tailwindcss').Config} */
-import designSystemPreset from "@dragvertising/design-system/tailwind-preset.js";
+// Try to import design system preset, fallback to empty if not available
+let designSystemPreset = {};
+try {
+  // Use dynamic import with .then() for synchronous-like behavior
+  const presetModule = require("@dragvertising/design-system/tailwind-preset.js");
+  designSystemPreset = presetModule.default || presetModule;
+} catch (e) {
+  // Design system not available, continue without it
+  // This is expected on Vercel if design system isn't available
+}
 
 export default {
   darkMode: ["class"],
@@ -10,7 +19,7 @@ export default {
     './src/**/*.{ts,tsx}',
   ],
   prefix: "",
-  presets: [designSystemPreset],
+  presets: Object.keys(designSystemPreset).length > 0 ? [designSystemPreset] : [],
   theme: {
     container: {
       center: true,
