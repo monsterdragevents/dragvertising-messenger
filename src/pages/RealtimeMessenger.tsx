@@ -261,6 +261,32 @@ export default function RealtimeMessenger() {
   }, [user, authLoading, navigate]);
 
   // =====================================================
+  // REALTIME: GLOBAL AUTH SETUP (must be first)
+  // =====================================================
+  useEffect(() => {
+    // Set Realtime auth once globally when session is available
+    const setupRealtimeAuth = async () => {
+      if (session?.access_token) {
+        console.log('[RealtimeMessenger] Setting Realtime auth with session token');
+        supabase.realtime.setAuth(session.access_token);
+      } else if (user) {
+        // Fallback: get session from Supabase client
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.access_token) {
+          console.log('[RealtimeMessenger] Setting Realtime auth from getSession');
+          supabase.realtime.setAuth(currentSession.access_token);
+        } else {
+          console.warn('[RealtimeMessenger] No access token available for Realtime auth');
+        }
+      }
+    };
+
+    if (user || session) {
+      setupRealtimeAuth();
+    }
+  }, [user, session?.access_token]);
+
+  // =====================================================
   // SCROLL TO BOTTOM
   // =====================================================
   const scrollToBottom = useCallback(() => {
@@ -1655,12 +1681,13 @@ export default function RealtimeMessenger() {
       return;
     }
 
-    // Set auth for Realtime Authorization with session token (must be done before channel creation)
+    // Ensure auth is set before creating channel
     const setupChannel = async () => {
-      if (session?.access_token) {
-        supabase.realtime.setAuth(session.access_token);
-      } else {
-        // Fallback: get session from Supabase client
+      // Wait a bit to ensure global auth setup has completed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify auth is set, if not set it now
+      if (!session?.access_token) {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (currentSession?.access_token) {
           supabase.realtime.setAuth(currentSession.access_token);
@@ -1848,13 +1875,8 @@ export default function RealtimeMessenger() {
           console.log('[RealtimeMessenger] Successfully subscribed to conversation channel');
         } else if (status === 'CHANNEL_ERROR') {
           console.error('[RealtimeMessenger] Channel subscription error - check authentication');
-          // Try to re-authenticate
-          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-            if (currentSession?.access_token) {
-              supabase.realtime.setAuth(currentSession.access_token);
-              console.log('[RealtimeMessenger] Re-authenticated Realtime, retrying subscription...');
-            }
-          });
+          // Don't retry automatically - let the global auth setup handle it
+          // Multiple retries can cause connection issues
         }
       });
 
@@ -1883,12 +1905,13 @@ export default function RealtimeMessenger() {
   useEffect(() => {
     if (!universe?.id) return;
 
-    // Set auth for Realtime Authorization with session token (must be done before channel creation)
+    // Ensure auth is set before creating channel
     const setupPresenceChannel = async () => {
-      if (session?.access_token) {
-        supabase.realtime.setAuth(session.access_token);
-      } else {
-        // Fallback: get session from Supabase client
+      // Wait a bit to ensure global auth setup has completed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify auth is set, if not set it now
+      if (!session?.access_token) {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (currentSession?.access_token) {
           supabase.realtime.setAuth(currentSession.access_token);
@@ -1935,13 +1958,8 @@ export default function RealtimeMessenger() {
           console.log('[Presence] Tracking presence for universe:', universe.id);
         } else if (status === 'CHANNEL_ERROR') {
           console.error('[Presence] Channel subscription error - check authentication');
-          // Try to re-authenticate
-          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-            if (currentSession?.access_token) {
-              supabase.realtime.setAuth(currentSession.access_token);
-              console.log('[Presence] Re-authenticated Realtime, retrying subscription...');
-            }
-          });
+          // Don't retry automatically - let the global auth setup handle it
+          // Multiple retries can cause connection issues
         }
       });
 
@@ -1993,12 +2011,13 @@ export default function RealtimeMessenger() {
   useEffect(() => {
     if (!universe?.id || !user?.id) return;
 
-    // Set auth for Realtime Authorization with session token (must be done before channel creation)
+    // Ensure auth is set before creating channel
     const setupConversationsChannel = async () => {
-      if (session?.access_token) {
-        supabase.realtime.setAuth(session.access_token);
-      } else {
-        // Fallback: get session from Supabase client
+      // Wait a bit to ensure global auth setup has completed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify auth is set, if not set it now
+      if (!session?.access_token) {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (currentSession?.access_token) {
           supabase.realtime.setAuth(currentSession.access_token);
@@ -2031,13 +2050,8 @@ export default function RealtimeMessenger() {
           console.log('[RealtimeMessenger] Successfully subscribed to conversations list updates');
         } else if (status === 'CHANNEL_ERROR') {
           console.error('[RealtimeMessenger] Conversations list channel error - check authentication');
-          // Try to re-authenticate
-          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-            if (currentSession?.access_token) {
-              supabase.realtime.setAuth(currentSession.access_token);
-              console.log('[RealtimeMessenger] Re-authenticated Realtime, retrying subscription...');
-            }
-          });
+          // Don't retry automatically - let the global auth setup handle it
+          // Multiple retries can cause connection issues
         }
       });
 

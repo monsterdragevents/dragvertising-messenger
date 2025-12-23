@@ -49,5 +49,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: true,
     flowType: 'pkce',
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
 });
 
