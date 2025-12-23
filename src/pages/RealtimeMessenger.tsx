@@ -743,7 +743,20 @@ export default function RealtimeMessenger() {
   // LOAD MESSAGES
   // =====================================================
   const loadMessages = useCallback(async (conversationId: string) => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      console.log('[RealtimeMessenger] loadMessages: No conversationId provided');
+      return;
+    }
+
+    if (!universe?.id) {
+      console.error('[RealtimeMessenger] loadMessages: No universe ID available');
+      toast.error('Please select a universe to load messages');
+      return;
+    }
+
+    console.log('[RealtimeMessenger] loadMessages: Loading messages for conversation:', conversationId);
+    console.log('[RealtimeMessenger] loadMessages: Universe ID:', universe.id);
+    setIsLoading(true);
 
     try {
       const { data, error } = await supabase
@@ -787,7 +800,16 @@ export default function RealtimeMessenger() {
         .order('created_at', { ascending: true })
         // No limit - load all messages in the conversation
 
-      if (error) throw error;
+      if (error) {
+        console.error('[RealtimeMessenger] loadMessages: Database error:', error);
+        console.error('[RealtimeMessenger] loadMessages: Error details:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+
+      console.log('[RealtimeMessenger] loadMessages: Raw data from database:', data?.length || 0, 'messages');
+      if (data && data.length > 0) {
+        console.log('[RealtimeMessenger] loadMessages: First message sample:', data[0]);
+      }
 
       // Normalize message sender profile - handle different Supabase response formats
       const formattedMessages: Message[] = (data || []).map(m => {
@@ -902,8 +924,9 @@ export default function RealtimeMessenger() {
         return msg;
       });
       
-      console.log('[RealtimeMessenger] Loaded messages:', messagesWithReplies.length);
+      console.log('[RealtimeMessenger] Loaded messages:', messagesWithReplies.length, messagesWithReplies);
       setMessages(messagesWithReplies);
+      setIsLoading(false);
       scrollToBottom();
 
       // Mark messages as read
@@ -924,8 +947,10 @@ export default function RealtimeMessenger() {
           .is('read_at', null);
       }
     } catch (error: any) {
-      console.error('Error loading messages:', error);
-      toast.error('Failed to load messages');
+      console.error('[RealtimeMessenger] Error loading messages:', error);
+      toast.error('Failed to load messages: ' + (error.message || 'Unknown error'));
+      setMessages([]);
+      setIsLoading(false);
     }
   }, [universe?.id, scrollToBottom]);
 
@@ -1630,19 +1655,22 @@ export default function RealtimeMessenger() {
       return;
     }
 
-    // Set auth for Realtime Authorization with session token
-    if (session?.access_token) {
-      supabase.realtime.setAuth(session.access_token);
-    } else {
-      // Fallback: get session from Supabase client
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.access_token) {
-          supabase.realtime.setAuth(session.access_token);
+    // Set auth for Realtime Authorization with session token (must be done before channel creation)
+    const setupChannel = async () => {
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token);
+      } else {
+        // Fallback: get session from Supabase client
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.access_token) {
+          supabase.realtime.setAuth(currentSession.access_token);
+        } else {
+          console.error('[RealtimeMessenger] No session available for Realtime auth');
+          return;
         }
-      });
-    }
+      }
 
-    const channel = supabase
+      const channel = supabase
       .channel(`conversation:${selectedConversation.id}:messages`, {
         config: {
           private: true,
@@ -1819,18 +1847,35 @@ export default function RealtimeMessenger() {
         if (status === 'SUBSCRIBED') {
           console.log('[RealtimeMessenger] Successfully subscribed to conversation channel');
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('[RealtimeMessenger] Channel subscription error');
+          console.error('[RealtimeMessenger] Channel subscription error - check authentication');
+          // Try to re-authenticate
+          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (currentSession?.access_token) {
+              supabase.realtime.setAuth(currentSession.access_token);
+              console.log('[RealtimeMessenger] Re-authenticated Realtime, retrying subscription...');
+            }
+          });
         }
       });
 
-    conversationChannelRef.current = channel;
+      conversationChannelRef.current = channel;
+
+      return () => {
+        console.log('[RealtimeMessenger] Unsubscribing from conversation channel');
+        channel.unsubscribe();
+        conversationChannelRef.current = null;
+      };
+    };
+
+    setupChannel();
 
     return () => {
-      console.log('[RealtimeMessenger] Unsubscribing from conversation channel');
-      channel.unsubscribe();
-      conversationChannelRef.current = null;
+      if (conversationChannelRef.current) {
+        conversationChannelRef.current.unsubscribe();
+        conversationChannelRef.current = null;
+      }
     };
-  }, [selectedConversation?.id, universe?.id, scrollToBottom, loadMessages]);
+  }, [selectedConversation?.id, universe?.id, scrollToBottom, loadMessages, session?.access_token]);
 
   // =====================================================
   // REALTIME: PRESENCE CHANNEL (Online Status)
@@ -1838,8 +1883,8 @@ export default function RealtimeMessenger() {
   useEffect(() => {
     if (!universe?.id) return;
 
-    // Set auth for Realtime Authorization with session token
-    const setRealtimeAuth = async () => {
+    // Set auth for Realtime Authorization with session token (must be done before channel creation)
+    const setupPresenceChannel = async () => {
       if (session?.access_token) {
         supabase.realtime.setAuth(session.access_token);
       } else {
@@ -1847,13 +1892,14 @@ export default function RealtimeMessenger() {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (currentSession?.access_token) {
           supabase.realtime.setAuth(currentSession.access_token);
+        } else {
+          console.error('[Presence] No session available for Realtime auth');
+          return;
         }
       }
-    };
-    setRealtimeAuth();
 
-    // Use universe-specific channel for presence (matches RLS policies)
-    const channel = supabase
+      // Use universe-specific channel for presence (matches RLS policies)
+      const channel = supabase
       .channel(`universe:${universe.id}:conversations`, {
         config: {
           private: true,
@@ -1887,16 +1933,35 @@ export default function RealtimeMessenger() {
             online_at: new Date().toISOString()
           });
           console.log('[Presence] Tracking presence for universe:', universe.id);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Presence] Channel subscription error - check authentication');
+          // Try to re-authenticate
+          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (currentSession?.access_token) {
+              supabase.realtime.setAuth(currentSession.access_token);
+              console.log('[Presence] Re-authenticated Realtime, retrying subscription...');
+            }
+          });
         }
       });
 
-    presenceChannelRef.current = channel;
+      presenceChannelRef.current = channel;
+
+      return () => {
+        channel.unsubscribe();
+        presenceChannelRef.current = null;
+      };
+    };
+
+    setupPresenceChannel();
 
     return () => {
-      channel.unsubscribe();
-      presenceChannelRef.current = null;
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.unsubscribe();
+        presenceChannelRef.current = null;
+      }
     };
-  }, [universe?.id, universe?.display_name, session]);
+  }, [universe?.id, universe?.display_name, session?.access_token]);
 
   // =====================================================
   // AUTO-CLEANUP STALE TYPING INDICATORS
@@ -1928,8 +1993,8 @@ export default function RealtimeMessenger() {
   useEffect(() => {
     if (!universe?.id || !user?.id) return;
 
-    // Set auth for Realtime Authorization with session token
-    const setRealtimeAuth = async () => {
+    // Set auth for Realtime Authorization with session token (must be done before channel creation)
+    const setupConversationsChannel = async () => {
       if (session?.access_token) {
         supabase.realtime.setAuth(session.access_token);
       } else {
@@ -1937,13 +2002,14 @@ export default function RealtimeMessenger() {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (currentSession?.access_token) {
           supabase.realtime.setAuth(currentSession.access_token);
+        } else {
+          console.error('[RealtimeMessenger] No session available for Realtime auth');
+          return;
         }
       }
-    };
-    setRealtimeAuth();
 
-    // Subscribe to conversation list updates for this universe
-    const conversationsListChannel = supabase
+      // Subscribe to conversation list updates for this universe
+      const conversationsListChannel = supabase
       .channel(`universe:${universe.id}:conversations`, {
         config: { private: true }
       })
@@ -1964,15 +2030,34 @@ export default function RealtimeMessenger() {
         if (status === 'SUBSCRIBED') {
           console.log('[RealtimeMessenger] Successfully subscribed to conversations list updates');
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('[RealtimeMessenger] Conversations list channel error');
+          console.error('[RealtimeMessenger] Conversations list channel error - check authentication');
+          // Try to re-authenticate
+          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (currentSession?.access_token) {
+              supabase.realtime.setAuth(currentSession.access_token);
+              console.log('[RealtimeMessenger] Re-authenticated Realtime, retrying subscription...');
+            }
+          });
         }
       });
 
-    return () => {
-      console.log('[RealtimeMessenger] Unsubscribing from conversations list channel');
-      supabase.removeChannel(conversationsListChannel);
+      return () => {
+        console.log('[RealtimeMessenger] Unsubscribing from conversations list channel');
+        supabase.removeChannel(conversationsListChannel);
+      };
     };
-  }, [universe?.id, user?.id, loadConversations, session]);
+
+    let cleanup: (() => void) | undefined;
+    setupConversationsChannel().then(cleanupFn => {
+      cleanup = cleanupFn;
+    });
+
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [universe?.id, user?.id, loadConversations, session?.access_token]);
 
   // =====================================================
   // LOAD DATA ON MOUNT AND WHEN UNIVERSE CHANGES
@@ -2036,10 +2121,17 @@ export default function RealtimeMessenger() {
   // =====================================================
   useEffect(() => {
     if (selectedConversation?.id) {
+      console.log('[RealtimeMessenger] useEffect: Loading messages for conversation:', selectedConversation.id);
+      console.log('[RealtimeMessenger] useEffect: Universe ID:', universe?.id);
+      console.log('[RealtimeMessenger] useEffect: User ID:', user?.id);
       // Always call loadMessages directly - it's stable via useCallback
       loadMessages(selectedConversation.id);
+    } else {
+      console.log('[RealtimeMessenger] useEffect: No conversation selected, clearing messages');
+      setMessages([]);
+      setIsLoading(false);
     }
-  }, [selectedConversation?.id, loadMessages]);
+  }, [selectedConversation?.id, loadMessages, universe?.id, user?.id]);
 
   // =====================================================
   // SELECT CONVERSATION FROM URL
@@ -2428,73 +2520,6 @@ export default function RealtimeMessenger() {
         
         {/* Right Side Navigation */}
         <div className="flex items-center gap-2">
-          {/* Navigation Icons */}
-          {(() => {
-            // Always use the main app URL - on subdomain, this should be the root domain
-            const mainAppUrl = import.meta.env.VITE_MAIN_APP_URL || (import.meta.env.DEV ? 'http://localhost:3000' : 'https://dragvertising.app');
-            // Ensure we have a proper URL (no trailing slash)
-            const baseUrl = mainAppUrl.replace(/\/$/, '');
-            
-            return (
-              <div className="hidden md:flex items-center gap-1">
-                <a
-                  href={`${baseUrl}/feed`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-lg hover:bg-accent transition-colors"
-                  title="Feed"
-                >
-                  <MessageSquare className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                </a>
-                <a
-                  href={`${baseUrl}/browse/talent`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-lg hover:bg-accent transition-colors"
-                  title="Talent"
-                >
-                  <Users className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                </a>
-                <a
-                  href={`${baseUrl}/browse/djs`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-lg hover:bg-accent transition-colors"
-                  title="DJs"
-                >
-                  <Music className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                </a>
-                <a
-                  href={`${baseUrl}/browse/shows`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-lg hover:bg-accent transition-colors"
-                  title="Shows"
-                >
-                  <Briefcase className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                </a>
-                <a
-                  href={`${baseUrl}/market`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-lg hover:bg-accent transition-colors"
-                  title="Shop"
-                >
-                  <ShoppingBag className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                </a>
-                <a
-                  href={`${baseUrl}/blog`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-lg hover:bg-accent transition-colors"
-                  title="Blog"
-                >
-                  <BookOpen className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-                </a>
-              </div>
-            );
-          })()}
-          
           {/* Universe Switcher */}
           <div className="flex items-center">
             <Suspense fallback={<Button variant="ghost" size="icon" className="h-9 w-9" disabled><Loader2 className="h-4 w-4 animate-spin" /></Button>}>
@@ -2879,9 +2904,9 @@ export default function RealtimeMessenger() {
               </div>
             )}
             {selectedConversation ? (
-            <>
-              {/* Header */}
-              <div className="border-b p-3 md:p-4 flex items-center justify-between bg-card/50 backdrop-blur sticky top-0 z-10">
+              <div className="flex-1 flex flex-col">
+                {/* Header */}
+                <div className="border-b p-3 md:p-4 flex items-center justify-between bg-card/50 backdrop-blur sticky top-0 z-10">
                 <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
                   {/* Back button for mobile */}
                   <Button
@@ -3153,10 +3178,15 @@ export default function RealtimeMessenger() {
                   </div>
                 )}
                 
-                {/* Virtualized Message List */}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full py-12">
+                {/* Message List */}
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                  {isLoading ? (
+                    <div className="flex flex-col items-center justify-center flex-1 py-12">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary mb-3" />
+                      <p className="text-sm text-muted-foreground">Loading messages...</p>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center flex-1 py-12">
                       <div className="rounded-full bg-muted p-4 mb-3">
                         <MessageSquare className="h-6 w-6 text-muted-foreground" />
                       </div>
@@ -3178,18 +3208,17 @@ export default function RealtimeMessenger() {
                       }
                       
                       return (
-                        <div className="flex-1 min-h-0">
-                          <VirtualizedMessageList
-                            messages={displayMessages}
-                            renderMessage={(message, index) => {
+                        <ScrollArea className="flex-1 min-h-0">
+                          <div className="p-3 md:p-6 space-y-4">
+                            {displayMessages.map((message, index) => {
                               const prevMessage = index > 0 ? displayMessages[index - 1] : null;
-                          const isMe = message.sender_profile_universe_id === universe?.id;
-                          const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
-                          const showTime = !prevMessage || 
-                            (new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime()) > 300000; // 5 minutes
+                              const isMe = message.sender_profile_universe_id === universe?.id;
+                              const showAvatar = !prevMessage || prevMessage.sender_profile_universe_id !== message.sender_profile_universe_id;
+                              const showTime = !prevMessage || 
+                                (new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime()) > 300000; // 5 minutes
 
-                          return (
-                            <div key={message.id} className="px-3 md:px-6 py-2">
+                              return (
+                                <div key={message.id}>
                               {showTime && (
                                 <div className="flex items-center justify-center my-4">
                                   <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
@@ -3460,16 +3489,17 @@ export default function RealtimeMessenger() {
                               </div>
                             </div>
                           );
-                        }}
-                        autoScroll={!messageSearch.searchQuery}
-                      />
-                    </div>
+                        })}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    </ScrollArea>
                   );
                 })()
               )}
-              
-              {/* Typing Indicator */}
-              {typingIndicatorText && (
+                </div>
+                
+                {/* Typing Indicator */}
+                {typingIndicatorText && (
                   <div className="flex-shrink-0 px-3 md:px-6 pb-2">
                     <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-muted-foreground">
                       <div className="flex gap-0.5 md:gap-1">
@@ -3628,7 +3658,7 @@ export default function RealtimeMessenger() {
                   </Button>
                 </form>
               </div>
-            </>
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-muted/20 via-background to-background">
               <div className="text-center max-w-md px-4 md:px-6">
@@ -3646,8 +3676,7 @@ export default function RealtimeMessenger() {
               </div>
             </div>
           )}
-          </div>
-
+          
           {/* Right Sidebar - Profile */}
           {selectedConversation && universe && (() => {
             const otherParticipants = selectedConversation.participants.filter(
@@ -3810,8 +3839,9 @@ export default function RealtimeMessenger() {
           })()}
         </div>
       </div>
+    </div>
 
-      {/* New Message Dialog */}
+    {/* New Message Dialog */}
       <Dialog open={isNewMessageDialogOpen} onOpenChange={(open) => {
         setIsNewMessageDialogOpen(open);
         if (!open) {
