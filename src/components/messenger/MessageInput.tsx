@@ -76,16 +76,16 @@ export function MessageInput({
   };
 
   return (
-    <div className="border-t border-border bg-background p-4">
+    <div className="border-t border-border bg-background p-dv-4">
       {/* Attachments Preview */}
       {attachments.length > 0 && (
-        <div className="flex gap-2 mb-2 flex-wrap">
+        <div className="flex gap-dv-2 mb-dv-2 flex-wrap">
           {attachments.map((file, index) => (
             <div
               key={index}
-              className="relative inline-flex items-center gap-2 p-2 bg-muted rounded-lg"
+              className="relative inline-flex items-center gap-dv-2 p-dv-2 bg-muted rounded-dv-lg"
             >
-              <span className="text-sm truncate max-w-[200px]">{file.name}</span>
+              <span className="text-dv-sm truncate max-w-[200px]">{file.name}</span>
               <button
                 onClick={() => removeAttachment(index)}
                 className="text-muted-foreground hover:text-foreground"

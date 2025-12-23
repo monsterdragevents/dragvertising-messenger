@@ -723,8 +723,8 @@ export default function RealtimeMessenger() {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 border-b border-border px-4 flex items-center justify-between bg-background">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="h-dv-16 border-b border-border px-dv-4 flex items-center justify-between bg-background">
+              <div className="flex items-center gap-dv-3 min-w-0">
                 {/* Mobile menu/back button */}
                 <Button
                   variant="ghost"
@@ -740,14 +740,14 @@ export default function RealtimeMessenger() {
                 >
                   <X className="h-4 w-4" />
                 </Button>
-                <Avatar className="h-10 w-10 flex-shrink-0">
+                <Avatar className="h-dv-10 w-dv-10 flex-shrink-0">
                   <AvatarImage src={selectedConversation.participants.find(p => p.profile_universe_id !== universe.id)?.profile_universe?.avatar_url} />
                   <AvatarFallback>
                     {selectedConversation.name?.charAt(0) || '?'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold truncate">
+                  <h3 className="font-dv-semibold text-dv-base truncate">
                     {selectedConversation.name || 
                      selectedConversation.participants
                        .filter(p => p.profile_universe_id !== universe.id)
@@ -757,7 +757,7 @@ export default function RealtimeMessenger() {
                   </h3>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-dv-2">
                 <Button
                   variant="ghost"
                   size="icon"

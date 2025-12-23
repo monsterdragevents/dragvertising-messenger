@@ -133,11 +133,11 @@ export function MessageArea({
 
                   <div
                     className={cn(
-                      "rounded-2xl px-4 py-2.5 shadow-sm transition-all relative",
-                      "group-hover:shadow-md",
+                      "rounded-dv-2xl px-dv-4 py-dv-2.5 shadow-dv-sm transition-dv-base relative",
+                      "group-hover:shadow-dv-md",
                       isMe
-                        ? "bg-primary text-primary-foreground rounded-br-md"
-                        : "bg-card border border-border rounded-bl-md"
+                        ? "bg-dv-pink-500 text-white rounded-br-dv-md"
+                        : "bg-card border border-border rounded-bl-dv-md"
                     )}
                   >
                     {/* Reply Preview */}
@@ -154,7 +154,7 @@ export function MessageArea({
                     )}
 
                     {/* Message Content */}
-                    <p className="text-sm whitespace-pre-wrap break-words">
+                    <p className="text-dv-sm whitespace-pre-wrap break-words">
                       {message.content}
                     </p>
 
@@ -215,8 +215,8 @@ export function MessageArea({
 
                     {/* Timestamp */}
                     <div className={cn(
-                      "mt-1 text-xs opacity-70",
-                      isMe ? "text-primary-foreground/70" : "text-muted-foreground"
+                      "mt-dv-1 text-dv-xs opacity-70",
+                      isMe ? "text-white/70" : "text-muted-foreground"
                     )}>
                       {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
                       {message.edited_at && ' (edited)'}

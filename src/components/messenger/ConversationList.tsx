@@ -180,8 +180,8 @@ export function ConversationList({
               </Button>
             )}
             <div>
-              <h2 className="text-lg md:text-xl font-semibold">Messages</h2>
-              <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+              <h2 className="text-dv-lg md:text-dv-xl font-dv-semibold">Messages</h2>
+              <p className="text-dv-xs md:text-dv-sm text-muted-foreground mt-dv-0.5">
                 {filteredConversations.length} {filteredConversations.length === 1 ? 'conversation' : 'conversations'}
               </p>
             </div>
@@ -222,20 +222,20 @@ export function ConversationList({
 
       {/* Filter Tabs */}
       <div className="flex border-b border-border px-2">
-        {(['all', 'unread', 'pinned', 'archived'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => onFilterChange(tab)}
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
-              filter === tab
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
+          {(['all', 'unread', 'pinned', 'archived'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => onFilterChange(tab)}
+              className={cn(
+                "px-dv-4 py-dv-2 text-dv-sm font-dv-semibold border-b-2 transition-dv-base",
+                filter === tab
+                  ? "border-dv-pink-500 text-dv-pink-500"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
       </div>
 
       {/* Conversation List */}
@@ -277,13 +277,13 @@ export function ConversationList({
                   key={conversation.id}
                   onClick={() => onSelectConversation(conversation)}
                   className={cn(
-                    "w-full p-3 rounded-lg text-left transition-colors mb-1",
+                    "w-full p-dv-3 rounded-dv-lg text-left transition-dv-base mb-dv-1",
                     "hover:bg-accent",
                     isSelected && "bg-accent"
                   )}
                 >
                   <div className="flex items-start gap-3">
-                    <Avatar className="h-12 w-12 flex-shrink-0">
+                    <Avatar className="h-dv-12 w-dv-12 flex-shrink-0">
                       <AvatarImage src={getConversationAvatar(conversation)} />
                       <AvatarFallback>
                         {getConversationDisplayName(conversation).charAt(0).toUpperCase()}
@@ -291,27 +291,27 @@ export function ConversationList({
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm truncate">
+                      <div className="flex items-center justify-between mb-dv-1">
+                        <div className="flex items-center gap-dv-2">
+                          <span className="font-dv-semibold text-dv-sm truncate">
                             {getConversationDisplayName(conversation)}
                           </span>
-                          {isPinned && <Pin className="h-3 w-3 text-muted-foreground" />}
-                          {isMuted && <BellOff className="h-3 w-3 text-muted-foreground" />}
+                          {isPinned && <Pin className="h-dv-3 w-dv-3 text-muted-foreground" />}
+                          {isMuted && <BellOff className="h-dv-3 w-dv-3 text-muted-foreground" />}
                         </div>
                         {conversation.last_message_at && (
-                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                          <span className="text-dv-xs text-muted-foreground flex-shrink-0">
                             {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm text-muted-foreground truncate">
+                      <div className="flex items-center justify-between gap-dv-2">
+                        <p className="text-dv-sm text-muted-foreground truncate">
                           {conversation.last_message?.content || 'No messages yet'}
                         </p>
                         {conversation.unread_count > 0 && (
-                          <Badge variant="default" className="flex-shrink-0">
+                          <Badge variant="default" className="flex-shrink-0 bg-dv-pink-500">
                             {conversation.unread_count}
                           </Badge>
                         )}
