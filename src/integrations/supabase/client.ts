@@ -12,31 +12,57 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 // This enables authentication to work across dragvertising.com, messenger.dragvertising.com, etc.
 const crossDomainStorage = typeof window !== 'undefined' ? createCrossDomainStorage() : localStorage;
 
-// Sync existing localStorage session to cookies on subdomains
+// Sync existing session between localStorage and cookies on subdomains
+// This ensures sessions from the main domain are accessible on subdomains
 if (typeof window !== 'undefined') {
   const hostname = window.location.hostname;
   const isSubdomain = hostname !== 'dragvertising.com' && hostname.includes('.dragvertising.com');
   
   if (isSubdomain) {
-    // On subdomain, try to sync session from cookies or localStorage
-    // The crossDomainStorage will handle this, but we can also manually sync here
+    // On subdomain, try to sync session from cookies (set by main domain) or localStorage
+    // The crossDomainStorage will handle this automatically, but we also manually sync here
+    // to ensure immediate availability
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (supabaseUrl) {
         const projectId = supabaseUrl.split('//')[1]?.split('.')[0];
         if (projectId) {
           const authKey = `sb-${projectId}-auth-token`;
-          // Check if we have it in localStorage but not in cookies
+          
+          // First, try to read from cookies (set by main domain with .dragvertising.com domain)
+          const cookieValue = crossDomainStorage.getItem(authKey);
+          
+          // Also check localStorage (might have been set on this subdomain)
           const localValue = localStorage.getItem(authKey);
-          if (localValue) {
-            // Sync to cookies
+          
+          // If we have a cookie value but not in localStorage, sync to localStorage for faster access
+          if (cookieValue && !localValue) {
+            try {
+              localStorage.setItem(authKey, cookieValue);
+              console.log('[Messenger Supabase] Synced auth session from cookies to localStorage for subdomain');
+            } catch (e) {
+              // Ignore localStorage errors (e.g., private browsing)
+            }
+          }
+          
+          // If we have localStorage but not cookies, sync to cookies for cross-domain sharing
+          if (localValue && !cookieValue) {
             crossDomainStorage.setItem(authKey, localValue);
-            console.log('[Supabase] Synced auth session to cookies for subdomain access');
+            console.log('[Messenger Supabase] Synced auth session from localStorage to cookies for cross-domain access');
+          }
+          
+          // Log what we found for debugging
+          if (cookieValue || localValue) {
+            console.log('[Messenger Supabase] Found existing session on subdomain:', {
+              fromCookie: !!cookieValue,
+              fromLocalStorage: !!localValue,
+              hostname
+            });
           }
         }
       }
     } catch (error) {
-      console.warn('[Supabase] Error syncing auth session:', error);
+      console.warn('[Messenger Supabase] Error syncing auth session:', error);
     }
   }
 }

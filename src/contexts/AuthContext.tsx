@@ -29,23 +29,62 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let mounted = true;
 
-    // Listen for auth changes
+    // Immediately check for existing session from cross-domain storage
+    // This ensures we detect sessions from the main domain before rendering
+    const checkInitialSession = async () => {
+      try {
+        console.log('[Messenger AuthContext] Checking for existing session from cross-domain storage...');
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (error) {
+          console.warn('[Messenger AuthContext] Error getting session:', error);
+        }
+
+        if (initialSession) {
+          console.log('[Messenger AuthContext] Found existing session:', initialSession.user.email);
+          setSession(initialSession);
+          setUser(initialSession.user);
+        } else {
+          console.log('[Messenger AuthContext] No existing session found');
+          setSession(null);
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('[Messenger AuthContext] Error checking initial session:', error);
+        if (mounted) {
+          setSession(null);
+          setUser(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    // Check session immediately
+    checkInitialSession();
+
+    // Listen for auth changes (login, logout, token refresh, etc.)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      
+      console.log('[Messenger AuthContext] Auth state changed:', event);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
