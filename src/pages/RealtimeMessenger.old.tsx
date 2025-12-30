@@ -17,25 +17,25 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUniverse } from '@/hooks/shared/useUniverse';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel, RealtimePresenceState } from '@supabase/supabase-js';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
+import { 
+  Button, 
+  Input, 
+  Textarea, 
+  ScrollArea, 
+  Badge, 
+  Avatar, 
+  AvatarFallback, 
+  AvatarImage,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@/lib/design-system';
 import { 
   MessageSquare, 
   Search, 

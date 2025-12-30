@@ -1,5 +1,5 @@
 import { Mic, Square, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/lib/design-system';
 import { useVoiceMessage } from '@/hooks/shared/useVoiceMessage';
 import { cn } from '@/lib/utils';
 

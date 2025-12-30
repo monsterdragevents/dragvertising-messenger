@@ -1,6 +1,5 @@
 import React, { useState, useRef, Suspense } from 'react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Button, Textarea } from '@/lib/design-system';
 import { Paperclip, Send, Smile, Loader2, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 const EmojiPicker = React.lazy(() => import('@/components/shared/EmojiPicker').then(module => ({ default: module.EmojiPicker })));

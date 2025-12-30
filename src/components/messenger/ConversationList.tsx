@@ -1,9 +1,5 @@
 import React from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { ScrollArea, Avatar, AvatarFallback, AvatarImage, Badge, Input, Button } from '@/lib/design-system';
 import { MessageSquare, Search, UserPlus, Archive, Pin, Bell, BellOff, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';

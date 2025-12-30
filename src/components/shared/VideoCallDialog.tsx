@@ -4,8 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, Button } from '@/lib/design-system';
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, X } from 'lucide-react';
 import { useVideoCall } from '@/hooks/shared/useVideoCall';
 import { toast } from '@/hooks/shared/use-toast';

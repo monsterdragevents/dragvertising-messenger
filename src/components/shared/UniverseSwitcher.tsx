@@ -4,15 +4,17 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import {
+import { 
+  Button, 
+  Avatar, 
+  AvatarFallback, 
+  AvatarImage, 
+  Badge,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@/lib/design-system';
 import { ChevronDown, User } from 'lucide-react';
 import { useUniverse, type Universe } from '@/hooks/shared/useUniverse';
 import { useAuth } from '@/contexts/AuthContext';
