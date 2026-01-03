@@ -640,21 +640,21 @@ export default function RealtimeMessenger() {
   return (
     <>
       {/* Navigation Header */}
-      <div className="border-b bg-card/95 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="border-b border-dv-gray-200 dark:border-dv-gray-800 bg-dv-gray-50/95 dark:bg-dv-gray-950/95 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-full mx-auto px-dv-4 py-dv-3 flex items-center justify-between">
           <a
             href={(import.meta.env.VITE_MAIN_APP_URL || (import.meta.env.DEV ? 'http://localhost:3000' : 'https://dragvertising.app')).replace(/\/$/, '')}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity group"
+            className="flex items-center gap-dv-2 hover:opacity-80 transition-opacity group"
             aria-label="Go to Dragvertising main app"
           >
             <img 
               src="/dragvertising-logo.png" 
               alt="Dragvertising" 
-              className="h-6 w-auto group-hover:scale-105 transition-transform"
+              className="h-dv-6 w-auto group-hover:scale-105 transition-transform"
             />
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ExternalLink className="h-dv-3.5 w-dv-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
           </a>
           
           {/* Right Side Navigation */}
@@ -679,7 +679,7 @@ export default function RealtimeMessenger() {
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-57px)] bg-background relative overflow-hidden">
+      <div className="flex h-[calc(100vh-57px)] bg-dv-gray-50 dark:bg-dv-gray-950 relative overflow-hidden">
         {/* Mobile Overlay */}
         {showSidebar && (
           <div 
@@ -690,12 +690,12 @@ export default function RealtimeMessenger() {
         
         {/* Conversation List Sidebar */}
         <div className={cn(
-          "flex-shrink-0 border-r border-border bg-background transition-all duration-300 ease-in-out",
-          "w-full sm:w-80 md:w-96",
+          "flex-shrink-0 border-r border-dv-gray-200 dark:border-dv-gray-800 bg-background transition-all duration-300 ease-in-out",
+          "w-full sm:w-dv-80 md:w-dv-96",
           "absolute md:relative inset-0 z-20 md:z-auto",
           "min-w-0 max-w-full overflow-hidden",
           showSidebar ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-          isSidebarCollapsed && "md:w-16"
+          isSidebarCollapsed && "md:w-dv-16"
         )}>
           <ConversationList
             conversations={conversations}

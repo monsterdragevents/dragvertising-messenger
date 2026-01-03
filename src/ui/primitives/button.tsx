@@ -16,14 +16,14 @@ const buttonVariants = cva(
         ghost: "text-foreground hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         // Standardized gradient variants
-        gradient: "bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 hover:from-purple-700 hover:via-pink-600 hover:to-orange-500 dark:from-purple-500 dark:via-pink-400 dark:to-orange-300 dark:hover:from-purple-600 dark:hover:via-pink-500 dark:hover:to-orange-400 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
-        gradientSecondary: "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 dark:from-purple-500 dark:to-blue-500 dark:hover:from-purple-600 dark:hover:to-blue-600 text-white shadow-md hover:shadow-lg hover:scale-[1.02]",
-        success: "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white shadow-md hover:shadow-lg",
-        purple: "bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 text-white shadow-md hover:shadow-lg",
+        gradient: "bg-gradient-to-r from-dv-purple-600 via-dv-pink-500 to-dv-orange-400 hover:from-dv-purple-700 hover:via-dv-pink-600 hover:to-dv-orange-500 dark:from-dv-purple-500 dark:via-dv-pink-400 dark:to-dv-orange-300 dark:hover:from-dv-purple-600 dark:hover:via-dv-pink-500 dark:hover:to-dv-orange-400 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
+        gradientSecondary: "bg-gradient-to-r from-dv-purple-600 to-dv-blue-600 hover:from-dv-purple-700 hover:to-dv-blue-700 dark:from-dv-purple-500 dark:to-dv-blue-500 dark:hover:from-dv-purple-600 dark:hover:via-dv-pink-500 dark:hover:to-dv-blue-600 text-white shadow-md hover:shadow-lg hover:scale-[1.02]",
+        success: "bg-dv-green-600 hover:bg-dv-green-700 dark:bg-dv-green-500 dark:hover:bg-dv-green-600 text-white shadow-md hover:shadow-lg",
+        purple: "bg-dv-purple-600 hover:bg-dv-purple-700 dark:bg-dv-purple-500 dark:hover:bg-dv-purple-600 text-white shadow-md hover:shadow-lg",
         // Dragvertising-inspired variants
-        dragvertising: "bg-gradient-to-r from-[#FFA726] via-[#FD0290] to-purple-600 hover:from-[#FF9800] hover:via-[#E60180] hover:to-purple-700 dark:from-[#FFB74D] dark:via-[#FD0290] dark:to-purple-500 dark:hover:from-[#FFA726] dark:hover:via-[#E60180] dark:hover:to-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
-        golden: "bg-[#FFA726] hover:bg-[#FF9800] dark:bg-[#FFB74D] dark:hover:bg-[#FFA726] text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
-        goldenGradient: "bg-gradient-to-r from-[#FFA726] to-[#FF6B35] hover:from-[#FF9800] hover:to-[#F4511E] dark:from-[#FFB74D] dark:to-[#FF8A65] dark:hover:from-[#FFA726] dark:hover:to-[#FF6B35] text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
+        dragvertising: "bg-gradient-to-r from-dv-golden-500 via-dv-pink-500 to-dv-purple-600 hover:from-dv-golden-600 hover:via-dv-pink-600 hover:to-dv-purple-700 dark:from-dv-golden-400 dark:via-dv-pink-500 dark:to-dv-purple-500 dark:hover:from-dv-golden-500 dark:hover:via-dv-pink-600 dark:hover:to-dv-purple-600 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
+        golden: "bg-dv-golden-500 hover:bg-dv-golden-600 dark:bg-dv-golden-400 dark:hover:bg-dv-golden-500 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
+        goldenGradient: "bg-gradient-to-r from-dv-golden-500 to-dv-warmOrange-500 hover:from-dv-golden-600 hover:to-dv-warmOrange-600 dark:from-dv-golden-400 dark:to-dv-warmOrange-400 dark:hover:from-dv-golden-500 dark:hover:to-dv-warmOrange-500 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]",
       },
       size: {
         default: "h-9 sm:h-10 px-4 sm:px-5 py-2 text-sm sm:text-sm",

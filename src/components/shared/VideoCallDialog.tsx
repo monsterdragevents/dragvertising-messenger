@@ -104,7 +104,7 @@ export function VideoCallDialog({
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-900">
                 <div className="text-center text-white">
-                  <div className="w-32 h-32 rounded-full bg-gray-700 flex items-center justify-center mx-auto mb-4">
+                  <div className="w-32 h-32 rounded-full bg-dv-gray-700 flex items-center justify-center mx-auto mb-4">
                     {remoteUserAvatar ? (
                       <img src={remoteUserAvatar} alt={remoteUserName} className="w-full h-full rounded-full object-cover" />
                     ) : (
@@ -112,9 +112,9 @@ export function VideoCallDialog({
                     )}
                   </div>
                   <p className="text-xl font-semibold">{remoteUserName}</p>
-                  <p className="text-sm text-gray-400 mt-2">
+                  <p className="text-sm text-dv-gray-400 mt-2">
                     {error ? (
-                      <span className="text-red-400">{error}</span>
+                      <span className="text-dv-red-400">{error}</span>
                     ) : (
                       <>
                         {callState === 'calling' && 'Calling...'}
@@ -192,7 +192,7 @@ export function VideoCallDialog({
                 <Button
                   variant="default"
                   size="icon"
-                  className="h-14 w-14 rounded-full bg-green-600 hover:bg-green-700"
+                  className="h-14 w-14 rounded-full bg-dv-green-600 hover:bg-dv-green-700"
                   onClick={acceptCall}
                 >
                   <Phone className="h-7 w-7" />

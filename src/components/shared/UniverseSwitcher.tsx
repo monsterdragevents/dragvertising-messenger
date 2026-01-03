@@ -49,12 +49,12 @@ export function UniverseSwitcher({ className }: UniverseSwitcherProps) {
   // Get role color (simplified)
   const getRoleColor = (role: string) => {
     const colors: Record<string, string> = {
-      talent: 'bg-purple-500',
-      dj: 'bg-blue-500',
-      producer: 'bg-green-500',
-      fan: 'bg-pink-500',
-      venue: 'bg-orange-500',
-      production_co: 'bg-indigo-500',
+      talent: 'bg-dv-purple-500',
+      dj: 'bg-dv-blue-500',
+      producer: 'bg-dv-green-500',
+      fan: 'bg-dv-pink-500',
+      venue: 'bg-dv-orange-500',
+      production_co: 'bg-dv-blue-600',
     };
     return colors[role] || 'bg-primary';
   };

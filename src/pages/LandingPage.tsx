@@ -288,7 +288,7 @@ export default function LandingPage() {
         </div>
 
         {/* Right Side - Illustration */}
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-600 via-[#FD0290] to-[#FFA726] p-12 relative overflow-hidden">
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-dv-purple-600 via-dv-pink-500 to-dv-golden-500 p-12 relative overflow-hidden">
           {/* Abstract Background Elements */}
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
