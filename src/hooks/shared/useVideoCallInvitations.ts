@@ -109,9 +109,20 @@ export function useVideoCallInvitations({
     const call = payload.new as VideoCall;
     const oldCall = payload.old as VideoCall;
 
+    console.log('[VideoCallInvitations] handleCallChange:', {
+      eventType: payload.eventType,
+      callStatus: call?.status,
+      calleeUserId: call?.callee_user_id,
+      callerUserId: call?.caller_user_id,
+      currentUserId: user?.id,
+      isIncoming: call?.callee_user_id === user?.id
+    });
+
     switch (payload.eventType) {
       case 'INSERT':
+        // Check if this is an incoming call for the current user
         if (call.callee_user_id === user?.id && call.status === 'ringing') {
+          console.log('[VideoCallInvitations] Triggering onIncomingCall callback');
           onIncomingCall?.(call);
         }
         onCallStatusChange?.(call);

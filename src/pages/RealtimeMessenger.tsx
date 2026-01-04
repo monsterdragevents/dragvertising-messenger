@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { getOrCreateConversation } from '@/lib/messenger/conversationUtils';
 import { useDebounce } from '@/hooks/shared/useDebounce';
 import { useVideoCallInvitations } from '@/hooks/shared/useVideoCallInvitations';
-import { playRingtone, stopRingtone } from '@/lib/audio/ringtone';
+import { playRingtone, stopRingtone, initializeAudioContext } from '@/lib/audio/ringtone';
 
 // Lazy load heavy components
 const UniverseSwitcher = lazy(() => import('@/components/shared/UniverseSwitcher').then(module => ({ default: module.UniverseSwitcher })));
@@ -144,6 +144,53 @@ export default function RealtimeMessenger() {
     supabase.realtime.setAuth(session.access_token);
   }, [session?.access_token]);
 
+  // Initialize audio context on user interaction (required for autoplay)
+  useEffect(() => {
+    // Initialize audio context on first user interaction
+    const handleUserInteraction = () => {
+      initializeAudioContext();
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+    
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+    
+    return () => {
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+    };
+  }, []);
+
+  // Helper function to show browser notification
+  const showCallNotification = (callerName: string, callId: string) => {
+    try {
+      const notification = new Notification('Incoming Video Call', {
+        body: `${callerName} is calling you`,
+        icon: '/dragvertising-logo.png',
+        tag: `video-call-${callId}`,
+        requireInteraction: true,
+        silent: false, // This should make it play system sound
+        badge: '/dragvertising-logo.png'
+      });
+      
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+      
+      // Auto-close after 30 seconds
+      setTimeout(() => {
+        notification.close();
+      }, 30000);
+    } catch (error) {
+      console.warn('[RealtimeMessenger] Could not show notification:', error);
+    }
+  };
+
   // Cleanup ringtone on unmount
   useEffect(() => {
     return () => {
@@ -161,13 +208,48 @@ export default function RealtimeMessenger() {
       setActiveCall(call);
       setIsVideoCallOpen(true);
       
+      // Find the conversation and get caller name
+      const conversation = conversations.find(c => c.id === call.conversation_id);
+      const callerName = conversation?.participants
+        .find(p => p.profile_universe_id !== universe.id)
+        ?.profile_universe?.display_name || 'Someone';
+      
+      // Request notification permission if not already granted
+      if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+          Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+              showCallNotification(callerName, call.id);
+            }
+          });
+        } else if (Notification.permission === 'granted') {
+          showCallNotification(callerName, call.id);
+        }
+      }
+      
       // Play ringing sound for incoming call
+      // Try multiple times to ensure it plays (browser autoplay restrictions)
+      console.log('[RealtimeMessenger] Attempting to play ringtone for incoming call');
+      initializeAudioContext();
+      
+      // Try to play immediately
       playRingtone();
       
+      // Also try after a short delay (in case audio context needs to resume)
+      // This helps when the audio context was suspended and needs time to resume
+      setTimeout(() => {
+        console.log('[RealtimeMessenger] Retrying ringtone after delay');
+        playRingtone();
+      }, 300);
+      
       // Find the conversation and select it
-      const conversation = conversations.find(c => c.id === call.conversation_id);
       if (conversation) {
         setSelectedConversation(conversation);
+      }
+      
+      // Focus the window/tab if possible (helps with notifications)
+      if (document.hidden) {
+        window.focus();
       }
     },
     onCallStatusChange: (call) => {
