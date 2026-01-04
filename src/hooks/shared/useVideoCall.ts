@@ -13,6 +13,7 @@ interface UseVideoCallProps {
   conversationId: string;
   remoteUserId: string;
   remoteUniverseId: string;
+  voiceOnly?: boolean; // If true, only create audio tracks (voice call)
   onRemoteStream?: (stream: MediaStream) => void;
   onCallEnded?: () => void;
   onError?: (error: string) => void;
@@ -37,6 +38,7 @@ export function useVideoCall({
   conversationId,
   remoteUserId,
   remoteUniverseId,
+  voiceOnly = false,
   onRemoteStream,
   onCallEnded,
   onError
@@ -139,27 +141,37 @@ export function useVideoCall({
         user.id
       );
 
-      // Create local video and audio tracks using Twilio Video
-      const videoTrack = await Video.createLocalVideoTrack({
-        name: 'camera',
-      });
+      // Create local audio track (always needed)
       const audioTrack = await Video.createLocalAudioTrack({
         name: 'microphone',
       });
 
-      localTrackRefs.current = [videoTrack];
       localAudioTrackRef.current = audioTrack;
+
+      // Create video track only if not voice-only
+      let videoTrack: Video.LocalVideoTrack | null = null;
+      if (!voiceOnly) {
+        videoTrack = await Video.createLocalVideoTrack({
+          name: 'camera',
+        });
+        localTrackRefs.current = [videoTrack];
+      } else {
+        localTrackRefs.current = [];
+      }
 
       // Create a MediaStream from Twilio tracks for local preview
       const localMediaStream = new MediaStream();
-      localMediaStream.addTrack(videoTrack.mediaStreamTrack);
+      if (videoTrack) {
+        localMediaStream.addTrack(videoTrack.mediaStreamTrack);
+      }
       localMediaStream.addTrack(audioTrack.mediaStreamTrack);
       setLocalStream(localMediaStream);
 
-      // Connect to Twilio Video room
+      // Connect to Twilio Video room with appropriate tracks
+      const tracks = videoTrack ? [videoTrack, audioTrack] : [audioTrack];
       const room = await Video.connect(token, {
         name: roomName,
-        tracks: [videoTrack, audioTrack],
+        tracks,
       });
 
       roomRef.current = room;
@@ -234,7 +246,7 @@ export function useVideoCall({
       cleanup(false);
       setCallState('idle');
     }
-  }, [universe?.id, user?.id, conversationId, remoteUserId, remoteUniverseId, onRemoteStream, cleanup, onError]);
+  }, [universe?.id, user?.id, conversationId, remoteUserId, remoteUniverseId, voiceOnly, onRemoteStream, cleanup, onError]);
 
   const attachRemoteTrack = useCallback((track: Video.RemoteTrack) => {
     if (track.kind === 'video' || track.kind === 'audio') {

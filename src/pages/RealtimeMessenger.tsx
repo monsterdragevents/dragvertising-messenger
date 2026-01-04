@@ -14,7 +14,7 @@ import { ConversationList } from '@/components/messenger/ConversationList';
 import { MessageArea } from '@/components/messenger/MessageArea';
 import { MessageInput } from '@/components/messenger/MessageInput';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Avatar, AvatarFallback, AvatarImage } from '@/lib/design-system';
-import { Loader2, UserPlus, X, Menu, Video, Search, Bell, BellOff } from 'lucide-react';
+import { Loader2, UserPlus, X, Menu, Video, Search, Bell, BellOff, Phone } from 'lucide-react';
 import { toast } from '@/hooks/shared/use-toast';
 import { cn } from '@/lib/utils';
 import { getOrCreateConversation } from '@/lib/messenger/conversationUtils';
@@ -118,8 +118,9 @@ export default function RealtimeMessenger() {
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
   const [showMessageSearch, setShowMessageSearch] = useState(false);
   
-  // Video call
+  // Video/Voice call
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const [isVoiceOnlyCall, setIsVoiceOnlyCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState<any | null>(null);
   const [activeCall, setActiveCall] = useState<any | null>(null); // Track active call for indicator
   
@@ -1764,6 +1765,31 @@ export default function RealtimeMessenger() {
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9"
+                  title="Voice call"
+                  onClick={() => {
+                    console.log('[RealtimeMessenger] Voice call button clicked');
+                    if (!selectedConversation) {
+                      toast.error('Please select a conversation first');
+                      return;
+                    }
+                    const otherParticipant = selectedConversation.participants.find(
+                      p => p.profile_universe_id !== universe.id
+                    );
+                    if (!otherParticipant) {
+                      toast.error('Cannot start voice call: Participant not found');
+                      return;
+                    }
+                    setIsVoiceOnlyCall(true);
+                    setIsVideoCallOpen(true);
+                  }}
+                  disabled={!selectedConversation || !!activeCall}
+                >
+                  <Phone className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9"
                   title="Video call"
                   onClick={() => {
                     console.log('[RealtimeMessenger] Video button clicked', {
@@ -1786,6 +1812,7 @@ export default function RealtimeMessenger() {
                       toast.error('Cannot start video call: Participant not found');
                       return;
                     }
+                    setIsVoiceOnlyCall(false);
                     setIsVideoCallOpen(true);
                   }}
                   disabled={!selectedConversation || !!activeCall}
@@ -1978,8 +2005,12 @@ export default function RealtimeMessenger() {
           <Suspense fallback={null}>
             <VideoCallDialog
               isOpen={isVideoCallOpen}
-              onClose={() => setIsVideoCallOpen(false)}
+              onClose={() => {
+                setIsVideoCallOpen(false);
+                setIsVoiceOnlyCall(false);
+              }}
               conversationId={selectedConversation.id}
+              voiceOnly={isVoiceOnlyCall}
               otherParticipant={{
                 profile_universe_id: otherParticipantData.profile_universe_id,
                 profile_universe: otherParticipantData.profile_universe

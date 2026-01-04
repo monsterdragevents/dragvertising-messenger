@@ -24,6 +24,7 @@ interface VideoCallDialogProps {
   isOpen: boolean;
   onClose: () => void;
   conversationId: string;
+  voiceOnly?: boolean; // If true, this is a voice-only call
   otherParticipant?: {
     profile_universe_id: string;
     profile_universe?: ProfileUniverse;
@@ -35,6 +36,7 @@ export function VideoCallDialog({
   isOpen,
   onClose,
   conversationId,
+  voiceOnly = false,
   otherParticipant,
   incomingCall
 }: VideoCallDialogProps) {
@@ -75,6 +77,7 @@ export function VideoCallDialog({
     conversationId: (isOpen && conversationId) ? conversationId : '',
     remoteUserId: (isOpen && remoteUserId) ? remoteUserId : '',
     remoteUniverseId: (isOpen && remoteUniverseId) ? remoteUniverseId : '',
+    voiceOnly: voiceOnly || (incomingCall ? false : voiceOnly), // Use voiceOnly prop, or check incoming call
     onCallEnded: () => {
       endVideoCall(callId || '');
       onClose();
@@ -215,16 +218,16 @@ export function VideoCallDialog({
           onClose();
         }
       }}>
-        <DialogContent className="max-w-md">
-          <DialogTitle>Video Call</DialogTitle>
-          <DialogDescription>Unable to start video call</DialogDescription>
-          <div className="text-center p-6">
-            <p className="text-sm text-muted-foreground mb-4">
-              Unable to start video call: Participant information not available.
-            </p>
-            <Button onClick={onClose}>Close</Button>
-          </div>
-        </DialogContent>
+      <DialogContent className="max-w-md">
+        <DialogTitle>{voiceOnly ? 'Voice Call' : 'Video Call'}</DialogTitle>
+        <DialogDescription>Unable to start {voiceOnly ? 'voice' : 'video'} call</DialogDescription>
+        <div className="text-center p-6">
+          <p className="text-sm text-muted-foreground mb-4">
+            Unable to start {voiceOnly ? 'voice' : 'video'} call: Participant information not available.
+          </p>
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </DialogContent>
       </Dialog>
     );
   }
@@ -237,8 +240,8 @@ export function VideoCallDialog({
         }
       }}>
         <DialogContent className="max-w-full w-full h-full p-0 bg-black border-none" onPointerDownOutside={(e) => e.preventDefault()}>
-          <DialogTitle className="sr-only">Video Call - Loading</DialogTitle>
-          <DialogDescription className="sr-only">Loading video call connection</DialogDescription>
+          <DialogTitle className="sr-only">{voiceOnly ? 'Voice Call' : 'Video Call'} - Loading</DialogTitle>
+          <DialogDescription className="sr-only">Loading {voiceOnly ? 'voice' : 'video'} call connection</DialogDescription>
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-white">
               <p>Loading...</p>
@@ -267,12 +270,12 @@ export function VideoCallDialog({
       }
     }}>
       <DialogContent className="max-w-full w-full h-full p-0 bg-black border-none" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
-        <DialogTitle className="sr-only">Video Call with {remoteUserName}</DialogTitle>
-        <DialogDescription className="sr-only">Video call in progress</DialogDescription>
+        <DialogTitle className="sr-only">{voiceOnly ? 'Voice Call' : 'Video Call'} with {remoteUserName}</DialogTitle>
+        <DialogDescription className="sr-only">{voiceOnly ? 'Voice' : 'Video'} call in progress</DialogDescription>
         <div className="relative w-full h-full flex items-center justify-center">
-          {/* Remote Video (Main) */}
+          {/* Remote Video (Main) - Only show for video calls */}
           <div className="absolute inset-0 w-full h-full">
-            {remoteStream ? (
+            {!voiceOnly && remoteStream && remoteStream.getVideoTracks().length > 0 ? (
               <video
                 ref={remoteVideoRef}
                 autoPlay
@@ -325,8 +328,8 @@ export function VideoCallDialog({
             )}
           </div>
 
-          {/* Local Video (Picture-in-Picture) */}
-          {localStream && (
+          {/* Local Video (Picture-in-Picture) - Only show for video calls */}
+          {!voiceOnly && localStream && localStream.getVideoTracks().length > 0 && (
             <div className="absolute bottom-20 right-4 w-48 h-36 rounded-lg overflow-hidden bg-black border-2 border-white shadow-lg">
               <video
                 ref={localVideoRef}
@@ -379,18 +382,21 @@ export function VideoCallDialog({
                 {/* Video/Audio Controls */}
                 {callId && (
                   <>
-                    <Button
-                      variant="secondary"
-                      size="icon"
-                      className="h-12 w-12 rounded-full"
-                      onClick={toggleVideo}
-                    >
-                      {videoEnabled ? (
-                        <Video className="h-6 w-6" />
-                      ) : (
-                        <VideoOff className="h-6 w-6" />
-                      )}
-                    </Button>
+                    {/* Only show video toggle for video calls */}
+                    {!voiceOnly && (
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="h-12 w-12 rounded-full"
+                        onClick={toggleVideo}
+                      >
+                        {videoEnabled ? (
+                          <Video className="h-6 w-6" />
+                        ) : (
+                          <VideoOff className="h-6 w-6" />
+                        )}
+                      </Button>
+                    )}
 
                     <Button
                       variant="secondary"
