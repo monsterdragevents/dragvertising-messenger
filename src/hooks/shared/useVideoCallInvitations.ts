@@ -110,28 +110,47 @@ export function useVideoCallInvitations({
   }, [user?.id, onIncomingCall, onCallStatusChange]);
 
   // Poll for active calls as a fallback (in case Realtime misses events)
+  // Note: RLS policies will automatically filter to only show calls where user is caller or callee
   const pollForActiveCalls = useCallback(async () => {
     if (!user?.id) return;
 
     try {
-      const { data: activeCalls, error } = await supabase
+      // Query calls where user is the callee (incoming calls)
+      const { data: calleeCalls, error: calleeError } = await supabase
         .from('video_calls')
         .select('*')
-        .or(`callee_user_id.eq.${user.id},caller_user_id.eq.${user.id}`)
+        .eq('callee_user_id', user.id)
         .in('status', ['ringing', 'accepted'])
         .order('created_at', { ascending: false })
         .limit(5);
 
-      if (error) {
-        console.error('[VideoCallInvitations] Error polling for calls:', error);
-        return;
+      if (calleeError) {
+        console.error('[VideoCallInvitations] Error polling for callee calls:', calleeError);
+        // Don't return early - try caller calls too
       }
 
-      if (activeCalls && activeCalls.length > 0) {
+      // Query calls where user is the caller (outgoing calls)
+      const { data: callerCalls, error: callerError } = await supabase
+        .from('video_calls')
+        .select('*')
+        .eq('caller_user_id', user.id)
+        .in('status', ['ringing', 'accepted'])
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (callerError) {
+        console.error('[VideoCallInvitations] Error polling for caller calls:', callerError);
+      }
+
+      // Combine and deduplicate calls
+      const allCalls = [...(calleeCalls || []), ...(callerCalls || [])];
+      const uniqueCalls = Array.from(
+        new Map(allCalls.map(call => [call.id, call])).values()
+      ) as VideoCall[];
+
+      if (uniqueCalls.length > 0) {
         // Process calls we haven't seen yet
-        for (const call of activeCalls) {
-          const callData = call as VideoCall;
-          
+        for (const callData of uniqueCalls) {
           // Skip if we've already processed this call
           if (processedCallIdsRef.current.has(callData.id)) {
             continue;
