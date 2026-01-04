@@ -19,6 +19,7 @@ import { toast } from '@/hooks/shared/use-toast';
 import { cn } from '@/lib/utils';
 import { getOrCreateConversation } from '@/lib/messenger/conversationUtils';
 import { useDebounce } from '@/hooks/shared/useDebounce';
+import { useVideoCallInvitations } from '@/hooks/shared/useVideoCallInvitations';
 
 // Lazy load heavy components
 const UniverseSwitcher = lazy(() => import('@/components/shared/UniverseSwitcher').then(module => ({ default: module.UniverseSwitcher })));
@@ -118,6 +119,7 @@ export default function RealtimeMessenger() {
   
   // Video call
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<any | null>(null);
   
   // Reply to message
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
@@ -138,6 +140,32 @@ export default function RealtimeMessenger() {
     console.log('[RealtimeMessenger] Setting Realtime auth');
     supabase.realtime.setAuth(session.access_token);
   }, [session?.access_token]);
+
+  // =====================================================
+  // VIDEO CALL INVITATIONS
+  // =====================================================
+  const videoCallInvitations = useVideoCallInvitations({
+    onIncomingCall: (call) => {
+      console.log('[RealtimeMessenger] Incoming call received:', call);
+      setIncomingCall(call);
+      setIsVideoCallOpen(true);
+      
+      // Find the conversation and select it
+      const conversation = conversations.find(c => c.id === call.conversation_id);
+      if (conversation) {
+        setSelectedConversation(conversation);
+      }
+    },
+    onCallStatusChange: (call) => {
+      console.log('[RealtimeMessenger] Call status changed:', call);
+      if (call.status === 'ended' || call.status === 'rejected') {
+        setIncomingCall(null);
+        if (call.id === incomingCall?.id) {
+          setIsVideoCallOpen(false);
+        }
+      }
+    }
+  });
 
   // =====================================================
   // LOAD CONVERSATIONS
@@ -1766,6 +1794,7 @@ export default function RealtimeMessenger() {
                 profile_universe_id: otherParticipantData.profile_universe_id,
                 profile_universe: otherParticipantData.profile_universe
               }}
+              incomingCall={incomingCall}
             />
           </Suspense>
         );

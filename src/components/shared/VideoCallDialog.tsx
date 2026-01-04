@@ -1,6 +1,6 @@
 /**
  * Video Call Dialog Component
- * Full-screen video call interface
+ * Full-screen video call interface with invitation flow
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -27,70 +27,45 @@ interface VideoCallDialogProps {
     profile_universe_id: string;
     profile_universe?: ProfileUniverse;
   };
+  incomingCall?: VideoCall;
 }
 
 export function VideoCallDialog({
   isOpen,
   onClose,
   conversationId,
-  otherParticipant
+  otherParticipant,
+  incomingCall
 }: VideoCallDialogProps) {
-  // All state declarations first
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
   const [isLoadingUserId, setIsLoadingUserId] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [callId, setCallId] = useState<string | null>(null);
+  const [isInitiating, setIsInitiating] = useState(false);
 
-  // Extract participant data
   const remoteUniverseId = otherParticipant?.profile_universe_id || '';
   const remoteUserName = otherParticipant?.profile_universe?.display_name || 
                         otherParticipant?.profile_universe?.handle || 
                         'Unknown User';
   const remoteUserAvatar = otherParticipant?.profile_universe?.avatar_url;
 
-  // Fetch user_id from profile_universe if not available
-  useEffect(() => {
-    if (!isOpen || !remoteUniverseId || remoteUserId) return;
-
-    const fetchUserId = async () => {
-      setIsLoadingUserId(true);
-      try {
-        console.log('[VideoCallDialog] Fetching user_id for remoteUniverseId:', remoteUniverseId);
-        const { data, error } = await supabase
-          .from('profile_universes')
-          .select('user_id')
-          .eq('id', remoteUniverseId)
-          .single();
-
-        if (data?.user_id) {
-          console.log('[VideoCallDialog] Found user_id:', data.user_id);
-          setRemoteUserId(data.user_id);
-        } else if (error) {
-          console.error('[VideoCallDialog] Error fetching user_id:', error);
-          setError('Could not find user. Please try again.');
-          // Don't close dialog on error - let user see the error and retry
-        }
-      } catch (error) {
-        console.error('[VideoCallDialog] Error fetching user_id:', error);
-        setError('Failed to start video call. Please try again.');
-        // Don't close dialog on error
-      } finally {
-        setIsLoadingUserId(false);
+  const { acceptCall: acceptInvitation, rejectCall: rejectInvitation, endCall: endVideoCall, initiateCall } = useVideoCallInvitations({
+    onIncomingCall: (call) => {
+      setCallId(call.id);
+    },
+    onCallStatusChange: (call) => {
+      if (call.status === 'accepted' && call.id === callId) {
+        startCall();
       }
-    };
+    }
+  });
 
-    fetchUserId();
-  }, [isOpen, remoteUniverseId, remoteUserId]);
-
-  // Only initialize video call hook when dialog is open and we have required data
-  // Always call the hook, but pass empty strings when dialog is closed to prevent initialization
   const {
     localStream,
     remoteStream,
     callState,
     startCall,
     endCall,
-    acceptCall,
-    rejectCall,
     toggleVideo,
     toggleAudio,
     videoEnabled,
@@ -100,7 +75,7 @@ export function VideoCallDialog({
     remoteUserId: (isOpen && remoteUserId) ? remoteUserId : '',
     remoteUniverseId: (isOpen && remoteUniverseId) ? remoteUniverseId : '',
     onCallEnded: () => {
-      // Close dialog when call ends (user explicitly ended it)
+      endVideoCall(callId || '');
       onClose();
     },
     onError: (errorMessage: string) => {
@@ -109,31 +84,80 @@ export function VideoCallDialog({
     }
   });
 
-  // All hooks that use callState must be after useVideoCall
-  // Log for debugging
   useEffect(() => {
-    if (isOpen) {
-      console.log('[VideoCallDialog] Dialog opened', {
-        conversationId,
-        remoteUniverseId,
-        otherParticipant,
-        hasRemoteUniverseId: !!remoteUniverseId,
-        hasRemoteUserId: !!remoteUserId,
-        callState
-      });
-    }
-  }, [isOpen, conversationId, remoteUniverseId, otherParticipant, remoteUserId, callState]);
+    if (!isOpen || !remoteUniverseId || remoteUserId) return;
 
-  // Log when hook values change
+    const fetchUserId = async () => {
+      setIsLoadingUserId(true);
+      try {
+        const { data, error } = await supabase
+          .from('profile_universes')
+          .select('user_id')
+          .eq('id', remoteUniverseId)
+          .single();
+
+        if (data?.user_id) {
+          setRemoteUserId(data.user_id);
+        } else if (error) {
+          setError('Could not find user. Please try again.');
+        }
+      } catch (error) {
+        setError('Failed to start video call. Please try again.');
+      } finally {
+        setIsLoadingUserId(false);
+      }
+    };
+
+    fetchUserId();
+  }, [isOpen, remoteUniverseId, remoteUserId]);
+
   useEffect(() => {
-    console.log('[VideoCallDialog] useVideoCall hook values', {
-      callState,
-      hasLocalStream: !!localStream,
-      hasRemoteStream: !!remoteStream,
-      videoEnabled,
-      audioEnabled
-    });
-  }, [callState, localStream, remoteStream, videoEnabled, audioEnabled]);
+    if (incomingCall) {
+      setCallId(incomingCall.id);
+    }
+  }, [incomingCall]);
+
+  const handleStartCall = async () => {
+    if (!remoteUserId || isInitiating) return;
+
+    setIsInitiating(true);
+    const result = await initiateCall(conversationId, remoteUserId, remoteUniverseId);
+    
+    if (result.success) {
+      setCallId(result.callId || null);
+    } else {
+      setError(result.error || 'Failed to start call');
+    }
+    setIsInitiating(false);
+  };
+
+  const handleAcceptCall = async () => {
+    if (!callId) return;
+    
+    const result = await acceptInvitation(callId);
+    if (!result.success) {
+      setError(result.error || 'Failed to accept call');
+    }
+  };
+
+  const handleRejectCall = async () => {
+    if (!callId) return;
+    
+    const result = await rejectInvitation(callId);
+    if (result.success) {
+      onClose();
+    } else {
+      setError(result.error || 'Failed to reject call');
+    }
+  };
+
+  const handleEndCall = () => {
+    if (callId) {
+      endVideoCall(callId);
+    }
+    endCall();
+    onClose();
+  };
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -150,83 +174,11 @@ export function VideoCallDialog({
     }
   }, [remoteStream]);
 
-  useEffect(() => {
-    console.log('[VideoCallDialog] useEffect check', {
-      isOpen,
-      callState,
-      remoteUserId,
-      isLoadingUserId,
-      conversationId,
-      remoteUniverseId,
-      shouldStart: isOpen && callState === 'idle' && remoteUserId && !isLoadingUserId
-    });
-
-    if (isOpen && callState === 'idle' && remoteUserId && !isLoadingUserId) {
-      console.log('[VideoCallDialog] Starting video call', {
-        conversationId,
-        remoteUserId,
-        remoteUniverseId,
-        callState
-      });
-      startCall().catch((error) => {
-        console.error('[VideoCallDialog] Error starting call:', error);
-        setError(error.message || 'Failed to start video call');
-      });
-    }
-  }, [isOpen, callState, startCall, remoteUserId, isLoadingUserId, conversationId, remoteUniverseId]);
-
-  // Trigger startCall when all conditions are met
-  // This is a separate effect to ensure it runs when remoteUserId becomes available
-  useEffect(() => {
-    const shouldStart = isOpen && 
-                       callState === 'idle' && 
-                       remoteUserId && 
-                       !isLoadingUserId &&
-                       conversationId &&
-                       remoteUniverseId;
-    
-    console.log('[VideoCallDialog] Start call trigger check', {
-      isOpen,
-      callState,
-      remoteUserId: !!remoteUserId,
-      isLoadingUserId,
-      conversationId: !!conversationId,
-      remoteUniverseId: !!remoteUniverseId,
-      shouldStart
-    });
-
-    if (shouldStart) {
-      console.log('[VideoCallDialog] All conditions met, starting call');
-      const timer = setTimeout(() => {
-        startCall().catch((error) => {
-          console.error('[VideoCallDialog] Error starting call:', error);
-          setError(error.message || 'Failed to start video call');
-        });
-      }, 200); // Small delay to ensure everything is ready
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, callState, remoteUserId, isLoadingUserId, conversationId, remoteUniverseId, startCall]);
-
-  const handleEndCall = () => {
-    endCall();
-    onClose();
-  };
-
-  const handleRejectCall = () => {
-    rejectCall();
-    onClose();
-  };
-
-  // Show error if we don't have participant data (check after all hooks)
   if (!isOpen) {
     return null;
   }
 
   if (!remoteUniverseId) {
-    console.warn('[VideoCallDialog] Missing remoteUniverseId, cannot start call', {
-      otherParticipant,
-      conversationId
-    });
     return (
       <Dialog open={isOpen} onOpenChange={(open) => {
         if (!open) {
@@ -273,13 +225,15 @@ export function VideoCallDialog({
     );
   }
 
+  const isOutgoingCall = !incomingCall;
+  const showCallControls = callState === 'connected' || (isOutgoingCall && callState === 'idle');
+  const showIncomingControls = incomingCall && callState === 'idle';
+  const showCallingState = isOutgoingCall && callState === 'idle' && !showCallControls;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
-      // Only allow closing if user explicitly closes (not on errors)
       if (!open) {
-        console.log('[VideoCallDialog] Dialog closing, ending call');
-        endCall();
-        onClose();
+        handleEndCall();
       }
     }}>
       <DialogContent className="max-w-full w-full h-full p-0 bg-black border-none" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
@@ -310,13 +264,14 @@ export function VideoCallDialog({
                   <p className="text-sm text-dv-gray-400 mt-2">
                     {error ? (
                       <span className="text-dv-red-400">{error}</span>
+                    ) : showCallingState ? (
+                      'Calling...'
+                    ) : showIncomingControls ? (
+                      'Incoming call...'
+                    ) : showCallControls ? (
+                      'Connected'
                     ) : (
-                      <>
-                        {callState === 'calling' && 'Calling...'}
-                        {callState === 'ringing' && 'Incoming call...'}
-                        {callState === 'connected' && 'Connected'}
-                        {callState === 'idle' && !error && 'Starting call...'}
-                      </>
+                      'Starting call...'
                     )}
                   </p>
                   {error && (
@@ -325,9 +280,11 @@ export function VideoCallDialog({
                       className="mt-4"
                       onClick={() => {
                         setError(null);
-                        startCall().catch((err) => {
-                          console.error('[VideoCallDialog] Error retrying call:', err);
-                        });
+                        if (isOutgoingCall) {
+                          handleStartCall();
+                        } else {
+                          handleAcceptCall();
+                        }
                       }}
                     >
                       Try Again
@@ -353,42 +310,13 @@ export function VideoCallDialog({
 
           {/* Call Controls */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4">
-            {/* Video Toggle */}
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={toggleVideo}
-            >
-              {videoEnabled ? (
-                <Video className="h-6 w-6" />
-              ) : (
-                <VideoOff className="h-6 w-6" />
-              )}
-            </Button>
-
-            {/* Audio Toggle */}
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={toggleAudio}
-            >
-              {audioEnabled ? (
-                <Mic className="h-6 w-6" />
-              ) : (
-                <MicOff className="h-6 w-6" />
-              )}
-            </Button>
-
-            {/* Accept/Reject/End Call */}
-            {callState === 'ringing' ? (
+            {showIncomingControls && (
               <>
                 <Button
                   variant="default"
                   size="icon"
                   className="h-14 w-14 rounded-full bg-dv-green-600 hover:bg-dv-green-700"
-                  onClick={acceptCall}
+                  onClick={handleAcceptCall}
                 >
                   <Phone className="h-7 w-7" />
                 </Button>
@@ -401,15 +329,66 @@ export function VideoCallDialog({
                   <PhoneOff className="h-7 w-7" />
                 </Button>
               </>
-            ) : (
-              <Button
-                variant="destructive"
-                size="icon"
-                className="h-14 w-14 rounded-full"
-                onClick={handleEndCall}
-              >
-                <PhoneOff className="h-7 w-7" />
-              </Button>
+            )}
+
+            {(showCallControls || showCallingState) && (
+              <>
+                {/* Start Call Button for outgoing calls */}
+                {isOutgoingCall && callState === 'idle' && !callId && (
+                  <Button
+                    variant="default"
+                    size="icon"
+                    className="h-14 w-14 rounded-full bg-dv-green-600 hover:bg-dv-green-700"
+                    onClick={handleStartCall}
+                    disabled={isInitiating}
+                  >
+                    <Phone className="h-7 w-7" />
+                  </Button>
+                )}
+
+                {/* Video/Audio Controls */}
+                {callId && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-12 w-12 rounded-full"
+                      onClick={toggleVideo}
+                    >
+                      {videoEnabled ? (
+                        <Video className="h-6 w-6" />
+                      ) : (
+                        <VideoOff className="h-6 w-6" />
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-12 w-12 rounded-full"
+                      onClick={toggleAudio}
+                    >
+                      {audioEnabled ? (
+                        <Mic className="h-6 w-6" />
+                      ) : (
+                        <MicOff className="h-6 w-6" />
+                      )}
+                    </Button>
+                  </>
+                )}
+
+                {/* End Call */}
+                {callId && (
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="h-14 w-14 rounded-full"
+                    onClick={handleEndCall}
+                  >
+                    <PhoneOff className="h-7 w-7" />
+                  </Button>
+                )}
+              </>
             )}
           </div>
 
@@ -427,4 +406,3 @@ export function VideoCallDialog({
     </Dialog>
   );
 }
-
