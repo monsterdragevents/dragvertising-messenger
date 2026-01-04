@@ -3,7 +3,7 @@
  * Manages video call invitations via Supabase Realtime
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,6 +37,51 @@ export function useVideoCallInvitations({
   const { user, session } = useAuth();
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const processedCallIdsRef = useRef<Set<string>>(new Set());
+
+  // Poll for active calls as a fallback (in case Realtime misses events)
+  const pollForActiveCalls = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const { data: activeCalls, error } = await supabase
+        .from('video_calls')
+        .select('*')
+        .or(`callee_user_id.eq.${user.id},caller_user_id.eq.${user.id}`)
+        .in('status', ['ringing', 'accepted'])
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error('[VideoCallInvitations] Error polling for calls:', error);
+        return;
+      }
+
+      if (activeCalls && activeCalls.length > 0) {
+        // Process calls we haven't seen yet
+        for (const call of activeCalls) {
+          const callData = call as VideoCall;
+          
+          // Skip if we've already processed this call
+          if (processedCallIdsRef.current.has(callData.id)) {
+            continue;
+          }
+
+          // Check if this is an incoming call
+          if (callData.callee_user_id === user.id && callData.status === 'ringing') {
+            console.log('[VideoCallInvitations] Found active incoming call via polling:', callData);
+            processedCallIdsRef.current.add(callData.id);
+            onIncomingCall?.(callData);
+          }
+          
+          // Always notify of status changes
+          onCallStatusChange?.(callData);
+        }
+      }
+    } catch (error) {
+      console.error('[VideoCallInvitations] Error in pollForActiveCalls:', error);
+    }
+  }, [user?.id, onIncomingCall, onCallStatusChange]);
 
   useEffect(() => {
     if (!user || !session?.access_token) return;
@@ -59,7 +104,7 @@ export function useVideoCallInvitations({
             filter: `callee_user_id=eq.${user.id}`
           },
           (payload) => {
-            console.log('[VideoCallInvitations] Received change:', payload);
+            console.log('[VideoCallInvitations] Received callee change:', payload);
             handleCallChange(payload);
           }
         )
@@ -80,6 +125,8 @@ export function useVideoCallInvitations({
           setIsConnected(status === 'SUBSCRIBED');
           if (status === 'SUBSCRIBED') {
             console.log('[VideoCallInvitations] Connected to video calls channel');
+            // Poll once after subscription to catch any missed calls
+            setTimeout(() => pollForActiveCalls(), 500);
           } else if (status === 'CHANNEL_ERROR') {
             console.error('[VideoCallInvitations] Channel error - check authentication');
             // Try to re-authenticate
@@ -95,17 +142,24 @@ export function useVideoCallInvitations({
 
     setupChannel();
 
+    // Poll periodically as a fallback (every 3 seconds)
+    const pollInterval = setInterval(() => {
+      pollForActiveCalls();
+    }, 3000);
+
     return () => {
       console.log('[VideoCallInvitations] Cleaning up video calls channel');
+      clearInterval(pollInterval);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
       channelRef.current = null;
       setIsConnected(false);
+      processedCallIdsRef.current.clear();
     };
-  }, [user?.id, session?.access_token]);
+  }, [user?.id, session?.access_token, handleCallChange, pollForActiveCalls]);
 
-  const handleCallChange = (payload: any) => {
+  const handleCallChange = useCallback((payload: any) => {
     const call = payload.new as VideoCall;
     const oldCall = payload.old as VideoCall;
 
@@ -130,13 +184,19 @@ export function useVideoCallInvitations({
       case 'INSERT':
         // Check if this is an incoming call for the current user
         if (call.callee_user_id === user?.id && call.status === 'ringing') {
-          console.log('[VideoCallInvitations] Incoming call detected - triggering onIncomingCall callback', {
-            callId: call.id,
-            callerUserId: call.caller_user_id,
-            calleeUserId: call.callee_user_id,
-            status: call.status
-          });
-          onIncomingCall?.(call);
+          // Mark as processed to avoid duplicate notifications
+          if (!processedCallIdsRef.current.has(call.id)) {
+            processedCallIdsRef.current.add(call.id);
+            console.log('[VideoCallInvitations] Incoming call detected - triggering onIncomingCall callback', {
+              callId: call.id,
+              callerUserId: call.caller_user_id,
+              calleeUserId: call.callee_user_id,
+              status: call.status
+            });
+            onIncomingCall?.(call);
+          } else {
+            console.log('[VideoCallInvitations] Call already processed, skipping:', call.id);
+          }
         } else {
           console.log('[VideoCallInvitations] INSERT event but not an incoming call for this user', {
             isCallee: call.callee_user_id === user?.id,
@@ -161,9 +221,12 @@ export function useVideoCallInvitations({
 
       case 'DELETE':
         console.log('[VideoCallInvitations] Call deleted:', oldCall);
+        if (oldCall?.id) {
+          processedCallIdsRef.current.delete(oldCall.id);
+        }
         break;
     }
-  };
+  }, [user?.id, onIncomingCall, onCallStatusChange]);
 
   const initiateCall = async (
     conversationId: string,
