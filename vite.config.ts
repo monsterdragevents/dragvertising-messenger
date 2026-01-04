@@ -102,8 +102,15 @@ export default defineConfig({
     sourcemap: false, // Disable sourcemaps in production for smaller bundles
   },
   server: {
-    port: 5173,
+    port: parseInt(process.env.PORT || '5173'),
     host: true,
+    strictPort: false,
+    hmr: {
+      // When accessed through proxy, use the proxy hostname
+      host: process.env.VITE_HMR_HOST || 'messenger.localhost',
+      port: parseInt(process.env.VITE_HMR_PORT || '8080'),
+      protocol: 'ws',
+    },
   },
 })
 

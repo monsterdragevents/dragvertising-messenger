@@ -42,8 +42,7 @@ function App() {
       <div className="min-h-screen bg-background">
         <Routes>
           <Route path="/" element={<RootRoute />} />
-          {/* Redirect /messenger to root for backwards compatibility */}
-          <Route path="/messenger" element={<Navigate to="/" replace />} />
+          <Route path="/messenger" element={<RootRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="top-right" />

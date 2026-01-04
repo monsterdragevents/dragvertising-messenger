@@ -1,15 +1,15 @@
 /**
  * Landing Page for Dragvertising Messenger
  * 
- * Matches the design of the main DragvertisingApp login page.
+ * Messenger-specific landing page with modern, clean design focused on communication.
  * After successful authentication, users are redirected to the messenger.
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button, Input } from '@/lib/design-system';
-import { Sparkles, Eye, EyeOff, Loader2, AlertCircle, Chrome, Crown, Users, Calendar, DollarSign, Music } from 'lucide-react';
+import { MessageSquare, Eye, EyeOff, Loader2, AlertCircle, Chrome, Video, Phone, Smile, Paperclip, Send, Zap, Shield, Globe } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/shared/use-toast';
 
@@ -200,15 +200,22 @@ export default function LandingPage() {
   // Password reset view
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen flex flex-col lg:flex-row bg-background">
+      <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-background via-background to-muted/20">
         {/* Left Side - Reset Form */}
-        <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-background">
+        <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-background/50 backdrop-blur-sm">
           <div className="w-full max-w-md space-y-8">
             {/* Logo */}
             <div className="flex justify-center lg:justify-start">
-              <Link to="/" className="hover:opacity-80 transition-opacity" aria-label="Dragvertising Home">
-                <Sparkles className="h-8 w-8 text-primary" />
-              </Link>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <MessageSquare className="h-10 w-10 text-primary" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-foreground">Dragvertising</h2>
+                  <p className="text-xs text-muted-foreground">Messenger</p>
+                </div>
+              </div>
             </div>
 
             {/* Header */}
@@ -287,77 +294,25 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Right Side - Illustration */}
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-dv-purple-600 via-dv-pink-500 to-dv-golden-500 p-12 relative overflow-hidden">
+        {/* Right Side - Messenger Preview */}
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-dv-pink-500 via-dv-purple-600 to-dv-blue-600 p-12 relative overflow-hidden">
           {/* Abstract Background Elements */}
           <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl" />
+            <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse delay-1000" />
           </div>
 
-          {/* Illustration Content */}
-          <div className="relative z-10 max-w-lg space-y-8 text-center">
-            <div className="space-y-6">
-              {/* Stylized Interface Representation */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-2xl">
-                <div className="space-y-4">
-                  {/* Header Row */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
-                        <Crown className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="h-3 w-24 bg-white/30 rounded" />
-                        <div className="h-2 w-16 bg-white/20 rounded" />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Content Rows */}
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-white/20" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-2 bg-white/30 rounded w-3/4" />
-                          <div className="h-2 bg-white/20 rounded w-1/2" />
-                        </div>
-                        <div className="w-16 h-6 bg-white/20 rounded" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Feature Highlights */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                  <Users className="h-6 w-6 text-white mb-2 mx-auto" />
-                  <p className="text-sm text-white/90 font-medium">Connect Talent</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                  <Calendar className="h-6 w-6 text-white mb-2 mx-auto" />
-                  <p className="text-sm text-white/90 font-medium">Book Shows</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                  <DollarSign className="h-6 w-6 text-white mb-2 mx-auto" />
-                  <p className="text-sm text-white/90 font-medium">Get Paid</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                  <Music className="h-6 w-6 text-white mb-2 mx-auto" />
-                  <p className="text-sm text-white/90 font-medium">Manage Events</p>
-                </div>
-              </div>
+          {/* Simple Messenger Icon */}
+          <div className="relative z-10 text-center space-y-6">
+            <div className="bg-white/10 backdrop-blur-md rounded-full p-12 border border-white/20 shadow-2xl inline-block">
+              <MessageSquare className="h-24 w-24 text-white" />
             </div>
-
             <div className="space-y-2">
               <h2 className="text-2xl font-bold text-white">
-                The Operating System for Drag Entertainment
+                Secure Messaging
               </h2>
-              <p className="text-white/80 text-lg">
-                One platform connecting every role in the industry
+              <p className="text-white/80 text-base">
+                Your conversations are private and encrypted
               </p>
             </div>
           </div>
@@ -384,24 +339,33 @@ export default function LandingPage() {
 
   // Main login/signup view
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-background">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-background via-background to-muted/20">
       {/* Left Side - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-background">
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-background/50 backdrop-blur-sm">
         <div className="w-full max-w-md space-y-8">
           {/* Logo */}
           <div className="flex justify-center lg:justify-start">
-            <Link to="/" className="hover:opacity-80 transition-opacity" aria-label="Dragvertising Home">
-              <Sparkles className="h-8 w-8 text-primary" />
-            </Link>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <MessageSquare className="h-10 w-10 text-primary" />
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Dragvertising</h2>
+                <p className="text-xs text-muted-foreground">Messenger</p>
+              </div>
+            </div>
           </div>
 
           {/* Header */}
           <div className="text-center lg:text-left space-y-2">
             <h1 className="text-4xl lg:text-5xl font-bold text-foreground">
-              {isSignUp ? 'Welcome to Dragvertising' : 'Welcome Back'}
+              {isSignUp ? 'Start Messaging' : 'Welcome Back'}
             </h1>
             <p className="text-lg text-muted-foreground">
-              {isSignUp ? "Get started - it's free. No credit card needed." : "Sign in to your account"}
+              {isSignUp 
+                ? "Connect with your drag entertainment community. Real-time messaging, video calls, and more." 
+                : "Sign in to continue your conversations"}
             </p>
           </div>
 
@@ -597,77 +561,123 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Right Side - Illustration */}
-      <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-purple-600 via-[#FD0290] to-[#FFA726] p-12 relative overflow-hidden">
+      {/* Right Side - Messenger Preview */}
+      <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-dv-pink-500 via-dv-purple-600 to-dv-blue-600 p-12 relative overflow-hidden">
         {/* Abstract Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute top-20 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse delay-1000" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl" />
         </div>
 
-        {/* Illustration Content */}
-        <div className="relative z-10 max-w-lg space-y-8 text-center">
-          <div className="space-y-6">
-            {/* Stylized Interface Representation */}
-            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 shadow-2xl">
-              <div className="space-y-4">
-                {/* Header Row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
-                      <Crown className="h-6 w-6 text-white" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="h-3 w-24 bg-white/30 rounded" />
-                      <div className="h-2 w-16 bg-white/20 rounded" />
+        {/* Messenger Preview */}
+        <div className="relative z-10 max-w-lg w-full space-y-8">
+          {/* Messenger Interface Preview */}
+          <div className="bg-white/95 backdrop-blur-md rounded-2xl p-6 border border-white/30 shadow-2xl">
+            {/* Chat Header */}
+            <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-dv-pink-500 to-dv-purple-600 flex items-center justify-center">
+                  <MessageSquare className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Sarah Johnson</div>
+                  <div className="text-xs text-gray-500">Active now</div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                  <Video className="h-4 w-4 text-gray-600" />
+                </button>
+                <button className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                  <Phone className="h-4 w-4 text-gray-600" />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="space-y-3 mb-4">
+              {/* Received Message */}
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-dv-pink-400 to-dv-purple-500 flex-shrink-0" />
+                <div className="flex-1 space-y-1">
+                  <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[75%]">
+                    <p className="text-sm text-gray-900">Hey! Are you ready for the show tonight? 🎭</p>
+                    <p className="text-xs text-gray-500 mt-1">2:34 PM</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sent Message */}
+              <div className="flex items-start gap-2 justify-end">
+                <div className="flex-1 space-y-1 flex items-end flex-col">
+                  <div className="bg-gradient-to-br from-dv-pink-500 to-dv-purple-600 rounded-2xl rounded-tr-sm px-4 py-2 max-w-[75%]">
+                    <p className="text-sm text-white">Absolutely! Can't wait to see everyone there ✨</p>
+                    <div className="flex items-center gap-1 justify-end mt-1">
+                      <p className="text-xs text-white/80">2:35 PM</p>
+                      <span className="text-xs text-white/90">✓✓</span>
                     </div>
                   </div>
                 </div>
-                
-                {/* Content Rows */}
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/20" />
-                      <div className="flex-1 space-y-2">
-                        <div className="h-2 bg-white/30 rounded w-3/4" />
-                        <div className="h-2 bg-white/20 rounded w-1/2" />
-                      </div>
-                      <div className="w-16 h-6 bg-white/20 rounded" />
-                    </div>
-                  ))}
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-dv-blue-500 to-dv-purple-600 flex-shrink-0" />
+              </div>
+
+              {/* Message with Reaction */}
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-dv-pink-400 to-dv-purple-500 flex-shrink-0" />
+                <div className="flex-1 space-y-1">
+                  <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-2 max-w-[75%]">
+                    <p className="text-sm text-gray-900">The lineup looks amazing! 🔥</p>
+                  </div>
+                  <div className="flex items-center gap-1 ml-2">
+                    <div className="bg-white rounded-full px-2 py-0.5 text-xs border border-gray-200 shadow-sm">❤️ 2</div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Feature Highlights */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <Users className="h-6 w-6 text-white mb-2 mx-auto" />
-                <p className="text-sm text-white/90 font-medium">Connect Talent</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <Calendar className="h-6 w-6 text-white mb-2 mx-auto" />
-                <p className="text-sm text-white/90 font-medium">Book Shows</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <DollarSign className="h-6 w-6 text-white mb-2 mx-auto" />
-                <p className="text-sm text-white/90 font-medium">Get Paid</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                <Music className="h-6 w-6 text-white mb-2 mx-auto" />
-                <p className="text-sm text-white/90 font-medium">Manage Events</p>
-              </div>
+            {/* Message Input */}
+            <div className="flex items-center gap-2 bg-gray-50 rounded-full px-4 py-2 border border-gray-200">
+              <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                <Smile className="h-5 w-5" />
+              </button>
+              <input 
+                type="text" 
+                placeholder="Type a message..." 
+                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 placeholder:text-gray-400"
+                readOnly
+              />
+              <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                <Paperclip className="h-5 w-5" />
+              </button>
+              <button className="text-dv-pink-600 hover:text-dv-pink-700 transition-colors">
+                <Send className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
-          <div className="space-y-2">
+          {/* Feature Highlights */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 border border-white/30 shadow-lg text-center">
+              <Zap className="h-6 w-6 text-dv-pink-600 mb-2 mx-auto" />
+              <p className="text-xs text-gray-900 font-medium">Real-time</p>
+            </div>
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 border border-white/30 shadow-lg text-center">
+              <Video className="h-6 w-6 text-dv-purple-600 mb-2 mx-auto" />
+              <p className="text-xs text-gray-900 font-medium">Video Calls</p>
+            </div>
+            <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 border border-white/30 shadow-lg text-center">
+              <Shield className="h-6 w-6 text-dv-blue-600 mb-2 mx-auto" />
+              <p className="text-xs text-gray-900 font-medium">Secure</p>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-center">
             <h2 className="text-2xl font-bold text-white">
-              The Operating System for Drag Entertainment
+              Connect with Your Community
             </h2>
-            <p className="text-white/80 text-lg">
-              One platform connecting every role in the industry
+            <p className="text-white/80 text-base">
+              Real-time messaging built for the drag entertainment industry
             </p>
           </div>
         </div>

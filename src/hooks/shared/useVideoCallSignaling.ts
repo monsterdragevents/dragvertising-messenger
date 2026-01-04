@@ -43,7 +43,8 @@ export function useVideoCallSignaling({
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!conversationId || !user) return;
+    // Only subscribe if we have a valid conversationId (not empty string)
+    if (!conversationId || conversationId === '' || !user) return;
 
     const setupChannel = async () => {
       // Set Realtime auth token
@@ -103,7 +104,10 @@ export function useVideoCallSignaling({
           if (status === 'SUBSCRIBED') {
             console.log('[VideoCallSignaling] Connected to video call channel');
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('[VideoCallSignaling] Channel subscription error');
+            // Only log error if we actually tried to subscribe (not just cleanup)
+            if (channelRef.current === channel) {
+              console.error('[VideoCallSignaling] Channel subscription error');
+            }
           }
         });
 
