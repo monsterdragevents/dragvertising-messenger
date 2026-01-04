@@ -990,8 +990,8 @@ export default function RealtimeMessenger() {
         }
       }
 
-      // Create message
-      const { data: newMessage, error } = await supabase
+      // Create message (insert without relationship query to avoid RLS issues)
+      const { data: insertedMessage, error: insertError } = await supabase
         .from('messages')
         .insert({
           conversation_id: selectedConversation.id,
@@ -1003,6 +1003,14 @@ export default function RealtimeMessenger() {
           reply_to_message_id: replyingToMessage?.id || null,
           metadata: {}
         })
+        .select('*')
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Fetch the message with relationship separately
+      const { data: newMessage, error: fetchError } = await supabase
+        .from('messages')
         .select(`
           *,
           profile_universes:sender_profile_universe_id(
@@ -1013,9 +1021,35 @@ export default function RealtimeMessenger() {
             role
           )
         `)
+        .eq('id', insertedMessage.id)
         .single();
 
-      if (error) throw error;
+      if (fetchError) {
+        console.warn('[RealtimeMessenger] Could not fetch message with profile, using inserted message:', fetchError);
+        // Fallback: use inserted message and fetch profile separately
+        const { data: profile } = await supabase
+          .from('profile_universes')
+          .select('id, handle, display_name, avatar_url, role')
+          .eq('id', universe.id)
+          .single();
+        
+        const formattedMessage: Message = {
+          id: insertedMessage.id,
+          conversation_id: insertedMessage.conversation_id,
+          sender_id: insertedMessage.sender_id,
+          sender_profile_universe_id: insertedMessage.sender_profile_universe_id,
+          content: insertedMessage.content,
+          message_type: insertedMessage.message_type,
+          created_at: insertedMessage.created_at,
+          sender_profile: profile || undefined
+        };
+
+        setMessages(prev => [...prev, formattedMessage]);
+        loadConversations();
+        setReplyingToMessage(null);
+        setIsSendingMessage(false);
+        return;
+      }
 
       // Add to messages list optimistically
       const senderProfile = Array.isArray(newMessage.profile_universes)
