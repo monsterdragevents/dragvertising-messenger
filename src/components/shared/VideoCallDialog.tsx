@@ -45,6 +45,7 @@ export function VideoCallDialog({
   const [error, setError] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [isInitiating, setIsInitiating] = useState(false);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
   const remoteUniverseId = otherParticipant?.profile_universe_id || '';
   const remoteUserName = otherParticipant?.profile_universe?.display_name || 
@@ -79,6 +80,11 @@ export function VideoCallDialog({
     remoteUniverseId: (isOpen && remoteUniverseId) ? remoteUniverseId : '',
     voiceOnly: voiceOnly || (incomingCall ? false : voiceOnly), // Use voiceOnly prop, or check incoming call
     onCallEnded: () => {
+      // Stop preview stream when call ends
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop());
+        setPreviewStream(null);
+      }
       endVideoCall(callId || '');
       onClose();
     },
@@ -87,6 +93,15 @@ export function VideoCallDialog({
       toast.error(errorMessage);
     }
   });
+
+  // Stop preview when call connects (localStream becomes available)
+  useEffect(() => {
+    if (localStream && previewStream) {
+      console.log('[VideoCallDialog] Call connected, stopping preview stream');
+      previewStream.getTracks().forEach(track => track.stop());
+      setPreviewStream(null);
+    }
+  }, [localStream, previewStream]);
 
   useEffect(() => {
     if (!isOpen || !remoteUniverseId || remoteUserId) return;
@@ -122,6 +137,43 @@ export function VideoCallDialog({
     }
   }, [incomingCall]);
 
+  // Start video preview when dialog opens for outgoing calls
+  useEffect(() => {
+    if (!isOpen || incomingCall || voiceOnly) return;
+
+    const startPreview = async () => {
+      try {
+        // Request camera and microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        setPreviewStream(stream);
+        console.log('[VideoCallDialog] Started video preview');
+      } catch (error: any) {
+        console.error('[VideoCallDialog] Error starting preview:', error);
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          setError('Camera and microphone access is required for video calls');
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          setError('No camera or microphone found');
+        } else {
+          setError('Failed to access camera and microphone');
+        }
+      }
+    };
+
+    startPreview();
+
+    // Cleanup preview when dialog closes
+    return () => {
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop());
+        setPreviewStream(null);
+        console.log('[VideoCallDialog] Stopped video preview');
+      }
+    };
+  }, [isOpen, incomingCall, voiceOnly]);
+
   // Stop ringing when dialog closes
   useEffect(() => {
     if (!isOpen) {
@@ -144,10 +196,18 @@ export function VideoCallDialog({
     // Play ringing sound for outgoing call
     playRingtone();
     
+    // Stop preview stream (it will be replaced by the actual call stream)
+    if (previewStream) {
+      previewStream.getTracks().forEach(track => track.stop());
+      setPreviewStream(null);
+    }
+    
     const result = await initiateCall(conversationId, remoteUserId, remoteUniverseId);
     
     if (result.success) {
       setCallId(result.callId || null);
+      // Start the actual call connection
+      startCall();
     } else {
       setError(result.error || 'Failed to start call');
       stopRingtone(); // Stop ringing if call failed
@@ -194,12 +254,22 @@ export function VideoCallDialog({
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Use preview stream or local stream for local video
+  const displayLocalStream = localStream || previewStream;
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
+
+  useEffect(() => {
+    if (previewVideoRef.current && previewStream) {
+      previewVideoRef.current.srcObject = previewStream;
+    }
+  }, [previewStream]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
@@ -273,16 +343,31 @@ export function VideoCallDialog({
         <DialogTitle className="sr-only">{voiceOnly ? 'Voice Call' : 'Video Call'} with {remoteUserName}</DialogTitle>
         <DialogDescription className="sr-only">{voiceOnly ? 'Voice' : 'Video'} call in progress</DialogDescription>
         <div className="relative w-full h-full flex items-center justify-center">
-          {/* Remote Video (Main) - Only show for video calls */}
+          {/* Remote Video (Main) or Preview Video - Only show for video calls */}
           <div className="absolute inset-0 w-full h-full">
-            {!voiceOnly && remoteStream && remoteStream.getVideoTracks().length > 0 ? (
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-                muted={false}
-              />
+            {!voiceOnly && (remoteStream?.getVideoTracks().length > 0 || previewStream?.getVideoTracks().length > 0) ? (
+              <>
+                {/* Show remote video when connected */}
+                {remoteStream && remoteStream.getVideoTracks().length > 0 && (
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                    muted={false}
+                  />
+                )}
+                {/* Show preview video when calling (before remote video is available) */}
+                {(!remoteStream || remoteStream.getVideoTracks().length === 0) && previewStream && previewStream.getVideoTracks().length > 0 && (
+                  <video
+                    ref={previewVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                    muted={true}
+                  />
+                )}
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-900">
                 <div className="text-center text-white">
@@ -328,9 +413,9 @@ export function VideoCallDialog({
             )}
           </div>
 
-          {/* Local Video (Picture-in-Picture) - Only show for video calls */}
+          {/* Local Video (Picture-in-Picture) - Only show for video calls when connected */}
           {!voiceOnly && localStream && localStream.getVideoTracks().length > 0 && (
-            <div className="absolute bottom-20 right-4 w-48 h-36 rounded-lg overflow-hidden bg-black border-2 border-white shadow-lg">
+            <div className="absolute bottom-20 right-4 w-48 h-36 rounded-lg overflow-hidden bg-black border-2 border-white shadow-lg z-10">
               <video
                 ref={localVideoRef}
                 autoPlay
