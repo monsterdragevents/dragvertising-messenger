@@ -39,6 +39,76 @@ export function useVideoCallInvitations({
   const [isConnected, setIsConnected] = useState(false);
   const processedCallIdsRef = useRef<Set<string>>(new Set());
 
+  // Define handleCallChange before it's used in useEffect
+  const handleCallChange = useCallback((payload: any) => {
+    const call = payload.new as VideoCall;
+    const oldCall = payload.old as VideoCall;
+
+    console.log('[VideoCallInvitations] handleCallChange:', {
+      eventType: payload.eventType,
+      callStatus: call?.status,
+      calleeUserId: call?.callee_user_id,
+      callerUserId: call?.caller_user_id,
+      currentUserId: user?.id,
+      isIncoming: call?.callee_user_id === user?.id,
+      callId: call?.id,
+      fullPayload: payload
+    });
+
+    // Validate we have a call object
+    if (!call) {
+      console.warn('[VideoCallInvitations] No call data in payload:', payload);
+      return;
+    }
+
+    switch (payload.eventType) {
+      case 'INSERT':
+        // Check if this is an incoming call for the current user
+        if (call.callee_user_id === user?.id && call.status === 'ringing') {
+          // Mark as processed to avoid duplicate notifications
+          if (!processedCallIdsRef.current.has(call.id)) {
+            processedCallIdsRef.current.add(call.id);
+            console.log('[VideoCallInvitations] Incoming call detected - triggering onIncomingCall callback', {
+              callId: call.id,
+              callerUserId: call.caller_user_id,
+              calleeUserId: call.callee_user_id,
+              status: call.status
+            });
+            onIncomingCall?.(call);
+          } else {
+            console.log('[VideoCallInvitations] Call already processed, skipping:', call.id);
+          }
+        } else {
+          console.log('[VideoCallInvitations] INSERT event but not an incoming call for this user', {
+            isCallee: call.callee_user_id === user?.id,
+            status: call.status,
+            expectedStatus: 'ringing'
+          });
+        }
+        onCallStatusChange?.(call);
+        break;
+
+      case 'UPDATE':
+        onCallStatusChange?.(call);
+        
+        if (oldCall.status === 'ringing' && call.status === 'accepted') {
+          toast.success('Call accepted');
+        } else if (oldCall.status === 'ringing' && call.status === 'rejected') {
+          toast.error('Call declined');
+        } else if (oldCall.status === 'ringing' && call.status === 'missed') {
+          toast.info('Missed call');
+        }
+        break;
+
+      case 'DELETE':
+        console.log('[VideoCallInvitations] Call deleted:', oldCall);
+        if (oldCall?.id) {
+          processedCallIdsRef.current.delete(oldCall.id);
+        }
+        break;
+    }
+  }, [user?.id, onIncomingCall, onCallStatusChange]);
+
   // Poll for active calls as a fallback (in case Realtime misses events)
   const pollForActiveCalls = useCallback(async () => {
     if (!user?.id) return;
@@ -158,75 +228,6 @@ export function useVideoCallInvitations({
       processedCallIdsRef.current.clear();
     };
   }, [user?.id, session?.access_token, handleCallChange, pollForActiveCalls]);
-
-  const handleCallChange = useCallback((payload: any) => {
-    const call = payload.new as VideoCall;
-    const oldCall = payload.old as VideoCall;
-
-    console.log('[VideoCallInvitations] handleCallChange:', {
-      eventType: payload.eventType,
-      callStatus: call?.status,
-      calleeUserId: call?.callee_user_id,
-      callerUserId: call?.caller_user_id,
-      currentUserId: user?.id,
-      isIncoming: call?.callee_user_id === user?.id,
-      callId: call?.id,
-      fullPayload: payload
-    });
-
-    // Validate we have a call object
-    if (!call) {
-      console.warn('[VideoCallInvitations] No call data in payload:', payload);
-      return;
-    }
-
-    switch (payload.eventType) {
-      case 'INSERT':
-        // Check if this is an incoming call for the current user
-        if (call.callee_user_id === user?.id && call.status === 'ringing') {
-          // Mark as processed to avoid duplicate notifications
-          if (!processedCallIdsRef.current.has(call.id)) {
-            processedCallIdsRef.current.add(call.id);
-            console.log('[VideoCallInvitations] Incoming call detected - triggering onIncomingCall callback', {
-              callId: call.id,
-              callerUserId: call.caller_user_id,
-              calleeUserId: call.callee_user_id,
-              status: call.status
-            });
-            onIncomingCall?.(call);
-          } else {
-            console.log('[VideoCallInvitations] Call already processed, skipping:', call.id);
-          }
-        } else {
-          console.log('[VideoCallInvitations] INSERT event but not an incoming call for this user', {
-            isCallee: call.callee_user_id === user?.id,
-            status: call.status,
-            expectedStatus: 'ringing'
-          });
-        }
-        onCallStatusChange?.(call);
-        break;
-
-      case 'UPDATE':
-        onCallStatusChange?.(call);
-        
-        if (oldCall.status === 'ringing' && call.status === 'accepted') {
-          toast.success('Call accepted');
-        } else if (oldCall.status === 'ringing' && call.status === 'rejected') {
-          toast.error('Call declined');
-        } else if (oldCall.status === 'ringing' && call.status === 'missed') {
-          toast.info('Missed call');
-        }
-        break;
-
-      case 'DELETE':
-        console.log('[VideoCallInvitations] Call deleted:', oldCall);
-        if (oldCall?.id) {
-          processedCallIdsRef.current.delete(oldCall.id);
-        }
-        break;
-    }
-  }, [user?.id, onIncomingCall, onCallStatusChange]);
 
   const initiateCall = async (
     conversationId: string,
