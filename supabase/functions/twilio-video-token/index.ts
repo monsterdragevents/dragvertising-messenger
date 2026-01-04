@@ -1,44 +1,6 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-// Simple JWT implementation for Twilio access token
-function createAccessToken(identity: string, roomName: string, accountSid: string, apiKeySid: string, apiKeySecret: string): string {
-  const header = {
-    alg: 'HS256',
-    typ: 'JWT'
-  };
-
-  const now = Math.floor(Date.now() / 1000);
-  const ttl = 3600; // 1 hour
-
-  const payload = {
-    jti: Math.random().toString(36).substring(2, 15),
-    grants: {
-      room: roomName
-    },
-    identity,
-    iat: now,
-    exp: now + ttl
-  };
-
-  // Create signature
-  const signingKey = Buffer.from(apiKeySecret);
-  const signature = await crypto.subtle.importKey(
-    'raw',
-    signingKey,
-    { name: 'HMAC', hash: 'SHA-256' },
-    true,
-    ['sign']
-  );
-
-  const encodedHeader = btoa(JSON.stringify(header));
-  const encodedPayload = btoa(JSON.stringify(payload));
-  
-  const data = new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`);
-  const signatureArray = await crypto.subtle.sign('HMAC', signature, data);
-  const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureArray)));
-
-  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
-}
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+import twilio from 'https://esm.sh/twilio@4.19.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -51,7 +13,7 @@ interface TwilioVideoTokenRequest {
   identity?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -78,8 +40,8 @@ serve(async (req) => {
       throw new Error('No authorization header')
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const authToken = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authToken)
     
     if (authError || !user) {
       throw new Error('Invalid authentication token')
@@ -126,22 +88,30 @@ serve(async (req) => {
     // Sanitize identity - use user ID or provided identity
     const identity = requestedIdentity || user.id
 
-    // Create Twilio access token with video grant
+    // Create Twilio access token with video grant using Twilio SDK
+    const AccessToken = twilio.jwt.AccessToken
+    const VideoGrant = AccessToken.VideoGrant
+
+    // Create a Video grant
+    const videoGrant = new VideoGrant({
+      room: roomName,
+    })
+
+    // Create an access token (valid for 24 hours)
     const accessToken = new AccessToken(
       twilioAccountSid,
       twilioApiKeySid,
       twilioApiKeySecret,
-      { identity }
+      {
+        identity: identity,
+        ttl: 86400, // 24 hours
+      }
     )
 
-    // Add video grant for the specific room
-    const videoGrant = {
-      room: roomName
-    }
-
+    // Add the Video grant to the token
     accessToken.addGrant(videoGrant)
 
-    // Generate token
+    // Serialize the token to a JWT string
     const jwt = accessToken.toJwt()
 
     // Log token issuance for debugging
