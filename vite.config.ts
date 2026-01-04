@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import path from 'path'
+import fs from 'fs'
 // PWA disabled temporarily - service workers can interfere with WebSocket connections
 // import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     // PWA disabled temporarily - service workers can interfere with WebSocket connections
@@ -78,6 +79,33 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Fallback to stub when messenger package isn't available (e.g., in Vercel)
+      // Always use stub in production builds (Vercel) since the package directory won't be available
+      // In development, check if package is installed in node_modules, otherwise use stub
+      '@dragvertising/messenger': (() => {
+        const isProduction = mode === 'production';
+        const nodeModulesPath = path.resolve(__dirname, './node_modules/@dragvertising/messenger');
+        const sourcePath = path.resolve(__dirname, '../dragvertising-messenger-package/src/index.ts');
+        const stubPath = path.resolve(__dirname, './src/lib/messenger-stub.tsx');
+        
+        // In production/Vercel, always use stub
+        if (isProduction) {
+          return stubPath;
+        }
+        
+        // In development, check if package exists in node_modules or source
+        if (fs.existsSync(nodeModulesPath)) {
+          // Package is installed via npm, let Vite resolve it normally
+          return nodeModulesPath;
+        }
+        
+        if (fs.existsSync(sourcePath)) {
+          return sourcePath;
+        }
+        
+        // Fallback to stub if nothing found
+        return stubPath;
+      })(),
     },
   },
   build: {
@@ -112,5 +140,5 @@ export default defineConfig({
       protocol: 'ws',
     },
   },
-})
+}))
 
