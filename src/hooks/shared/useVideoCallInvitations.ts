@@ -115,15 +115,34 @@ export function useVideoCallInvitations({
       calleeUserId: call?.callee_user_id,
       callerUserId: call?.caller_user_id,
       currentUserId: user?.id,
-      isIncoming: call?.callee_user_id === user?.id
+      isIncoming: call?.callee_user_id === user?.id,
+      callId: call?.id,
+      fullPayload: payload
     });
+
+    // Validate we have a call object
+    if (!call) {
+      console.warn('[VideoCallInvitations] No call data in payload:', payload);
+      return;
+    }
 
     switch (payload.eventType) {
       case 'INSERT':
         // Check if this is an incoming call for the current user
         if (call.callee_user_id === user?.id && call.status === 'ringing') {
-          console.log('[VideoCallInvitations] Triggering onIncomingCall callback');
+          console.log('[VideoCallInvitations] Incoming call detected - triggering onIncomingCall callback', {
+            callId: call.id,
+            callerUserId: call.caller_user_id,
+            calleeUserId: call.callee_user_id,
+            status: call.status
+          });
           onIncomingCall?.(call);
+        } else {
+          console.log('[VideoCallInvitations] INSERT event but not an incoming call for this user', {
+            isCallee: call.callee_user_id === user?.id,
+            status: call.status,
+            expectedStatus: 'ringing'
+          });
         }
         onCallStatusChange?.(call);
         break;
