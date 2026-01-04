@@ -7,84 +7,39 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUniverse } from '@/hooks/shared/useUniverse';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { ConversationList } from '@/components/messenger/ConversationList';
-import { MessageArea } from '@/components/messenger/MessageArea';
-import { MessageInput } from '@/components/messenger/MessageInput';
+import { 
+  ConversationList, 
+  MessageArea, 
+  MessageInput,
+  UniverseSwitcher,
+  VoiceMessageButton,
+  VideoCallDialog,
+  useUniverse,
+  useDebounce,
+  useVideoCallInvitations,
+  useMessengerClient,
+  getOrCreateConversation,
+  playRingtone,
+  stopRingtone,
+  initializeAudioContext,
+  toast,
+  type Conversation,
+  type ConversationParticipant,
+  type Message,
+  type VideoCall
+} from '@dragvertising/messenger';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Avatar, AvatarFallback, AvatarImage } from '@/lib/design-system';
 import { Loader2, UserPlus, X, Menu, Video, Search, Bell, BellOff, Phone } from 'lucide-react';
-import { toast } from '@/hooks/shared/use-toast';
 import { cn } from '@/lib/utils';
-import { getOrCreateConversation } from '@/lib/messenger/conversationUtils';
-import { useDebounce } from '@/hooks/shared/useDebounce';
-import { useVideoCallInvitations } from '@/hooks/shared/useVideoCallInvitations';
-import { playRingtone, stopRingtone, initializeAudioContext } from '@/lib/audio/ringtone';
 
-// Lazy load heavy components
-const UniverseSwitcher = lazy(() => import('@/components/shared/UniverseSwitcher').then(module => ({ default: module.UniverseSwitcher })));
-const VoiceMessageButton = lazy(() => import('@/components/shared/VoiceMessageButton').then(module => ({ default: module.VoiceMessageButton })));
-const VideoCallDialog = lazy(() => import('@/components/shared/VideoCallDialog').then(module => ({ default: module.VideoCallDialog })));
-
-// Types
-interface Conversation {
-  id: string;
-  type: string;
-  name?: string;
-  last_message_at?: string;
-  metadata?: any;
-  participants: ConversationParticipant[];
-  last_message?: {
-    content: string;
-    sender_profile_universe_id?: string;
-    created_at: string;
-  };
-  unread_count: number;
-}
-
-interface ConversationParticipant {
-  profile_universe_id: string;
-  is_archived: boolean;
-  is_muted: boolean;
-  is_pinned: boolean;
-  profile_universe?: {
-    id: string;
-    handle: string;
-    display_name: string;
-    avatar_url?: string;
-  };
-}
-
-interface Message {
-  id: string;
-  conversation_id: string;
-  sender_id: string;
-  sender_profile_universe_id: string;
-  content: string;
-  message_type: string;
-  created_at: string;
-  updated_at?: string;
-  edited_at?: string;
-  deleted_at?: string;
-  reply_to_message_id?: string;
-  read_at?: string;
-  metadata?: any;
-  attachments?: any[];
-  sender_profile?: {
-    id: string;
-    handle: string;
-    display_name: string;
-    avatar_url?: string;
-    role?: string;
-  };
-  reactions?: any[];
-  reply_to_message?: any;
-}
+// Types are now imported from @dragvertising/messenger package
 
 export default function RealtimeMessenger() {
   const { user, session } = useAuth();
-  const { universe } = useUniverse();
+  const supabaseClient = useMessengerClient();
+  const { universe } = useUniverse({ user: user || null });
   const [searchParams, setSearchParams] = useSearchParams();
 
   // State
@@ -203,6 +158,10 @@ export default function RealtimeMessenger() {
   // VIDEO CALL INVITATIONS
   // =====================================================
   const videoCallInvitations = useVideoCallInvitations({
+    options: {
+      user: user || null,
+      session: session || null
+    },
     onIncomingCall: (call) => {
       console.log('[RealtimeMessenger] Incoming call received:', call);
       setIncomingCall(call);
@@ -552,7 +511,7 @@ export default function RealtimeMessenger() {
       setNewMessageSearchResults([]);
 
       // Get or create conversation
-      const conversationId = await getOrCreateConversation(universe.id, targetUniverseId);
+      const conversationId = await getOrCreateConversation(universe.id, targetUniverseId, supabaseClient);
 
       // Reload conversations to include the new one
       await loadConversations();
@@ -1612,7 +1571,7 @@ export default function RealtimeMessenger() {
             {/* Universe Switcher */}
             <div className="flex items-center">
               <Suspense fallback={<Button variant="ghost" size="icon" className="h-9 w-9" disabled><Loader2 className="h-4 w-4 animate-spin" /></Button>}>
-                <UniverseSwitcher />
+                <UniverseSwitcher options={{ user: user || null }} />
               </Suspense>
             </div>
             
@@ -2016,6 +1975,14 @@ export default function RealtimeMessenger() {
                 profile_universe: otherParticipantData.profile_universe
               }}
               incomingCall={incomingCall}
+              videoCallOptions={{
+                universe: universe || null,
+                user: user || null
+              }}
+              videoCallInvitationsOptions={{
+                user: user || null,
+                session: session || null
+              }}
             />
           </Suspense>
         );

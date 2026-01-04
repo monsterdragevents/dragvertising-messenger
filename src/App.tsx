@@ -1,6 +1,31 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { MessengerProvider } from '@dragvertising/messenger'
+import { supabase } from './integrations/supabase/client'
+import {
+  Button,
+  Input,
+  Textarea,
+  ScrollArea,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Badge,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './lib/design-system'
 import { Toaster } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
@@ -39,14 +64,41 @@ function RootRoute() {
 function App() {
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-background">
-        <Routes>
-          <Route path="/" element={<RootRoute />} />
-          <Route path="/messenger" element={<RootRoute />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        <Toaster position="top-right" />
-      </div>
+      <MessengerProvider 
+        supabaseClient={supabase}
+        designSystem={{
+          Button,
+          Input,
+          Textarea,
+          ScrollArea,
+          Avatar,
+          AvatarFallback,
+          AvatarImage,
+          Badge,
+          Dialog,
+          DialogContent,
+          DialogHeader,
+          DialogTitle,
+          DialogDescription,
+          Popover,
+          PopoverContent,
+          PopoverTrigger,
+          DropdownMenu,
+          DropdownMenuContent,
+          DropdownMenuItem,
+          DropdownMenuSeparator,
+          DropdownMenuTrigger,
+        }}
+      >
+        <div className="min-h-screen bg-background">
+          <Routes>
+            <Route path="/" element={<RootRoute />} />
+            <Route path="/messenger" element={<RootRoute />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          <Toaster position="top-right" />
+        </div>
+      </MessengerProvider>
     </AuthProvider>
   )
 }
