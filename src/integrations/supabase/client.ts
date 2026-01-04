@@ -1,11 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 import { createCrossDomainStorage } from '@/lib/storage/crossDomainStorage';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Trim any whitespace/newlines from environment variables (common issue with .env files)
+// Also remove any newline characters that might cause WebSocket connection failures
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim();
+const SUPABASE_ANON_KEY_RAW = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY = SUPABASE_ANON_KEY_RAW?.trim().replace(/[\n\r]/g, '');
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error('Missing Supabase environment variables');
+}
+
+// Warn if original key had newlines (helps debug deployment issues)
+if (SUPABASE_ANON_KEY_RAW && (SUPABASE_ANON_KEY_RAW.includes('\n') || SUPABASE_ANON_KEY_RAW.includes('\r'))) {
+  console.warn('[Supabase Client] WARNING: API key contained newline characters. Auto-fixed, but please update your environment variable in Vercel/deployment to remove them.');
 }
 
 // Create cross-domain storage adapter for subdomain support

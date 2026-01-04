@@ -129,6 +129,7 @@ export default function RealtimeMessenger() {
 
   // Refs
   const conversationChannelRef = useRef<RealtimeChannel | null>(null);
+  const presenceChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // =====================================================
@@ -948,9 +949,14 @@ export default function RealtimeMessenger() {
     }
 
     // Set up presence channel for online status
-    supabase.realtime.setAuth(session.access_token);
-    
-    const presenceChannel = supabase.channel(`presence:${selectedConversation.id}`, {
+    const setupPresence = async () => {
+      // Ensure auth is set BEFORE creating channel
+      supabase.realtime.setAuth(session.access_token);
+      
+      // Wait a tick to ensure auth is propagated
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      const presenceChannel = supabase.channel(`presence:${selectedConversation.id}`, {
       config: {
         presence: {
           key: universe.id
@@ -1007,13 +1013,21 @@ export default function RealtimeMessenger() {
             display_name: universe.display_name || universe.handle,
             online_at: new Date().toISOString()
           });
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[RealtimeMessenger] Presence channel error - check authentication');
         }
       });
 
+      presenceChannelRef.current = presenceChannel;
+    };
+
+    setupPresence();
+
     return () => {
-      if (presenceChannel) {
-        presenceChannel.untrack();
-        supabase.removeChannel(presenceChannel);
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.untrack();
+        supabase.removeChannel(presenceChannelRef.current);
+        presenceChannelRef.current = null;
       }
     };
   }, [selectedConversation?.id, universe?.id, session?.access_token]);
@@ -1028,10 +1042,17 @@ export default function RealtimeMessenger() {
 
     console.log('[RealtimeMessenger] Setting up Realtime subscription for conversation:', selectedConversation.id);
 
-    // Ensure auth is set
+    // Ensure auth is set BEFORE creating channel
+    // This is critical - auth must be set before subscription
     supabase.realtime.setAuth(session.access_token);
-
-    const channel = supabase
+    
+    // Small delay to ensure auth is propagated to Realtime connection
+    // This helps prevent race conditions where channel is created before auth is set
+    const setupChannel = async () => {
+      // Wait a tick to ensure auth is set
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      const channel = supabase
       .channel(`conversation:${selectedConversation.id}:messages`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -1186,15 +1207,29 @@ export default function RealtimeMessenger() {
           console.log('[RealtimeMessenger] Successfully subscribed to conversation channel');
         } else if (status === 'CHANNEL_ERROR') {
           console.error('[RealtimeMessenger] Channel error - check authentication');
+          // Try to re-authenticate and resubscribe
+          if (session?.access_token) {
+            console.log('[RealtimeMessenger] Retrying with fresh auth token');
+            supabase.realtime.setAuth(session.access_token);
+          }
+        } else if (status === 'TIMED_OUT') {
+          console.error('[RealtimeMessenger] Channel timed out');
+        } else if (status === 'CLOSED') {
+          console.log('[RealtimeMessenger] Channel closed');
         }
       });
 
-    conversationChannelRef.current = channel;
+      conversationChannelRef.current = channel;
+    };
+
+    setupChannel();
 
     return () => {
       console.log('[RealtimeMessenger] Unsubscribing from conversation channel');
-      channel.unsubscribe();
-      conversationChannelRef.current = null;
+      if (conversationChannelRef.current) {
+        conversationChannelRef.current.unsubscribe();
+        conversationChannelRef.current = null;
+      }
     };
   }, [selectedConversation?.id, universe?.id, session?.access_token, loadConversations, messages]);
 

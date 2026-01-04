@@ -34,14 +34,20 @@ export function useVideoCallInvitations({
   onIncomingCall,
   onCallStatusChange
 }: UseVideoCallInvitationsProps = {}) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !session?.access_token) return;
 
     const setupChannel = async () => {
+      // Ensure auth is set BEFORE creating channel
+      supabase.realtime.setAuth(session.access_token);
+      
+      // Wait a tick to ensure auth is propagated
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
       const channel = supabase
         .channel('video-calls')
         .on(
@@ -74,6 +80,13 @@ export function useVideoCallInvitations({
           setIsConnected(status === 'SUBSCRIBED');
           if (status === 'SUBSCRIBED') {
             console.log('[VideoCallInvitations] Connected to video calls channel');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('[VideoCallInvitations] Channel error - check authentication');
+            // Try to re-authenticate
+            if (session?.access_token) {
+              console.log('[VideoCallInvitations] Retrying with fresh auth token');
+              supabase.realtime.setAuth(session.access_token);
+            }
           }
         });
 
@@ -90,7 +103,7 @@ export function useVideoCallInvitations({
       channelRef.current = null;
       setIsConnected(false);
     };
-  }, [user?.id]);
+  }, [user?.id, session?.access_token]);
 
   const handleCallChange = (payload: any) => {
     const call = payload.new as VideoCall;
