@@ -79,33 +79,11 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Fallback to stub when messenger package isn't available (e.g., in Vercel)
-      // Always use stub in production builds (Vercel) since the package directory won't be available
-      // In development, check if package is installed in node_modules, otherwise use stub
-      '@dragvertising/messenger': (() => {
-        const isProduction = mode === 'production';
-        const nodeModulesPath = path.resolve(__dirname, './node_modules/@dragvertising/messenger');
-        const sourcePath = path.resolve(__dirname, '../dragvertising-messenger-package/src/index.ts');
-        const stubPath = path.resolve(__dirname, './src/lib/messenger-stub.tsx');
-        
-        // In production/Vercel, always use stub
-        if (isProduction) {
-          return stubPath;
-        }
-        
-        // In development, check if package exists in node_modules or source
-        if (fs.existsSync(nodeModulesPath)) {
-          // Package is installed via npm, let Vite resolve it normally
-          return nodeModulesPath;
-        }
-        
-        if (fs.existsSync(sourcePath)) {
-          return sourcePath;
-        }
-        
-        // Fallback to stub if nothing found
-        return stubPath;
-      })(),
+      // Always use stub - the package should be imported dynamically in App.tsx
+      // This allows builds to succeed even when the package directory isn't available (Vercel)
+      // Using a more specific alias to override node_modules resolution
+      '@dragvertising/messenger': path.resolve(__dirname, './src/lib/messenger-stub.tsx'),
+      '@dragvertising/messenger/contexts/MessengerContext': path.resolve(__dirname, './src/lib/messenger-stub.tsx'),
     },
   },
   build: {
