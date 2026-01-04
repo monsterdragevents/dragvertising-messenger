@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { getOrCreateConversation } from '@/lib/messenger/conversationUtils';
 import { useDebounce } from '@/hooks/shared/useDebounce';
 import { useVideoCallInvitations } from '@/hooks/shared/useVideoCallInvitations';
+import { playRingtone, stopRingtone } from '@/lib/audio/ringtone';
 
 // Lazy load heavy components
 const UniverseSwitcher = lazy(() => import('@/components/shared/UniverseSwitcher').then(module => ({ default: module.UniverseSwitcher })));
@@ -120,6 +121,7 @@ export default function RealtimeMessenger() {
   // Video call
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
   const [incomingCall, setIncomingCall] = useState<any | null>(null);
+  const [activeCall, setActiveCall] = useState<any | null>(null); // Track active call for indicator
   
   // Reply to message
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
@@ -142,6 +144,13 @@ export default function RealtimeMessenger() {
     supabase.realtime.setAuth(session.access_token);
   }, [session?.access_token]);
 
+  // Cleanup ringtone on unmount
+  useEffect(() => {
+    return () => {
+      stopRingtone();
+    };
+  }, []);
+
   // =====================================================
   // VIDEO CALL INVITATIONS
   // =====================================================
@@ -149,7 +158,11 @@ export default function RealtimeMessenger() {
     onIncomingCall: (call) => {
       console.log('[RealtimeMessenger] Incoming call received:', call);
       setIncomingCall(call);
+      setActiveCall(call);
       setIsVideoCallOpen(true);
+      
+      // Play ringing sound for incoming call
+      playRingtone();
       
       // Find the conversation and select it
       const conversation = conversations.find(c => c.id === call.conversation_id);
@@ -159,10 +172,23 @@ export default function RealtimeMessenger() {
     },
     onCallStatusChange: (call) => {
       console.log('[RealtimeMessenger] Call status changed:', call);
-      if (call.status === 'ended' || call.status === 'rejected') {
-        setIncomingCall(null);
-        if (call.id === incomingCall?.id) {
-          setIsVideoCallOpen(false);
+      
+      // Update active call state
+      if (call.status === 'ringing' || call.status === 'accepted') {
+        setActiveCall(call);
+      } else {
+        setActiveCall(null);
+      }
+      
+      // Stop ringing when call is answered or rejected
+      if (call.status === 'accepted' || call.status === 'rejected' || call.status === 'ended') {
+        stopRingtone();
+        
+        if (call.status === 'ended' || call.status === 'rejected') {
+          setIncomingCall(null);
+          if (call.id === incomingCall?.id) {
+            setIsVideoCallOpen(false);
+          }
         }
       }
     }
@@ -1524,6 +1550,7 @@ export default function RealtimeMessenger() {
             onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             showSidebar={showSidebar}
             onCloseSidebar={() => setShowSidebar(false)}
+            activeCallConversationId={activeCall?.conversation_id || null}
           />
         </div>
 
@@ -1583,6 +1610,18 @@ export default function RealtimeMessenger() {
                 </div>
               </div>
               <div className="flex items-center gap-dv-2">
+                {/* Active Call Indicator */}
+                {activeCall && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-dv-primary/10 border border-dv-primary/20">
+                    <div className="relative">
+                      <Video className="h-4 w-4 text-dv-primary animate-pulse" />
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-dv-primary rounded-full animate-ping" />
+                    </div>
+                    <span className="text-xs font-medium text-dv-primary">
+                      {activeCall.status === 'ringing' ? 'Ringing...' : activeCall.status === 'accepted' ? 'In Call' : 'Calling...'}
+                    </span>
+                  </div>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1633,7 +1672,7 @@ export default function RealtimeMessenger() {
                     }
                     setIsVideoCallOpen(true);
                   }}
-                  disabled={!selectedConversation}
+                  disabled={!selectedConversation || !!activeCall}
                 >
                   <Video className="h-4 w-4" />
                 </Button>

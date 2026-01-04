@@ -10,6 +10,7 @@ import { useVideoCall } from '@/hooks/shared/useVideoCall';
 import { useVideoCallInvitations, type VideoCall } from '@/hooks/shared/useVideoCallInvitations';
 import { toast } from '@/hooks/shared/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { playRingtone, stopRingtone } from '@/lib/audio/ringtone';
 
 interface ProfileUniverse {
   id: string;
@@ -114,25 +115,48 @@ export function VideoCallDialog({
   useEffect(() => {
     if (incomingCall) {
       setCallId(incomingCall.id);
+      // Ringing sound is handled by RealtimeMessenger when incoming call is received
     }
   }, [incomingCall]);
+
+  // Stop ringing when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      stopRingtone();
+    }
+  }, [isOpen]);
+
+  // Stop ringing when call status changes to accepted
+  useEffect(() => {
+    if (callId && callState === 'connected') {
+      stopRingtone();
+    }
+  }, [callId, callState]);
 
   const handleStartCall = async () => {
     if (!remoteUserId || isInitiating) return;
 
     setIsInitiating(true);
+    
+    // Play ringing sound for outgoing call
+    playRingtone();
+    
     const result = await initiateCall(conversationId, remoteUserId, remoteUniverseId);
     
     if (result.success) {
       setCallId(result.callId || null);
     } else {
       setError(result.error || 'Failed to start call');
+      stopRingtone(); // Stop ringing if call failed
     }
     setIsInitiating(false);
   };
 
   const handleAcceptCall = async () => {
     if (!callId) return;
+    
+    // Stop ringing when call is accepted
+    stopRingtone();
     
     const result = await acceptInvitation(callId);
     if (!result.success) {
@@ -143,6 +167,9 @@ export function VideoCallDialog({
   const handleRejectCall = async () => {
     if (!callId) return;
     
+    // Stop ringing when call is rejected
+    stopRingtone();
+    
     const result = await rejectInvitation(callId);
     if (result.success) {
       onClose();
@@ -152,6 +179,9 @@ export function VideoCallDialog({
   };
 
   const handleEndCall = () => {
+    // Stop ringing when call ends
+    stopRingtone();
+    
     if (callId) {
       endVideoCall(callId);
     }

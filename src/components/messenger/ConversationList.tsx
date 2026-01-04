@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollArea, Avatar, AvatarFallback, AvatarImage, Badge, Input, Button } from '@/lib/design-system';
-import { MessageSquare, Search, UserPlus, Archive, Pin, Bell, BellOff, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { MessageSquare, Search, UserPlus, Archive, Pin, Bell, BellOff, ChevronLeft, ChevronRight, X, Video } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +46,7 @@ interface ConversationListProps {
   onToggleCollapse?: () => void;
   showSidebar?: boolean;
   onCloseSidebar?: () => void;
+  activeCallConversationId?: string | null; // ID of conversation with active call
 }
 
 export function ConversationList({
@@ -62,7 +63,8 @@ export function ConversationList({
   isCollapsed = false,
   onToggleCollapse,
   showSidebar = true,
-  onCloseSidebar
+  onCloseSidebar,
+  activeCallConversationId
 }: ConversationListProps) {
   // Filter conversations based on active filter
   const filteredConversations = React.useMemo(() => {
@@ -293,6 +295,11 @@ export function ConversationList({
                           <span className="font-dv-semibold text-dv-sm truncate flex-1 min-w-0">
                             {getConversationDisplayName(conversation)}
                           </span>
+                          {activeCallConversationId === conversation.id && (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-dv-primary/10 border border-dv-primary/20 flex-shrink-0">
+                              <Video className="h-3 w-3 text-dv-primary animate-pulse" />
+                            </div>
+                          )}
                           {isPinned && <Pin className="h-dv-3 w-dv-3 text-muted-foreground flex-shrink-0" />}
                           {isMuted && <BellOff className="h-dv-3 w-dv-3 text-muted-foreground flex-shrink-0" />}
                         </div>
