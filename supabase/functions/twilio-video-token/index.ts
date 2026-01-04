@@ -1,6 +1,44 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { AccessToken } from 'https://esm.sh/twilio@4.19.0/jwt/index.js'
+// Simple JWT implementation for Twilio access token
+function createAccessToken(identity: string, roomName: string, accountSid: string, apiKeySid: string, apiKeySecret: string): string {
+  const header = {
+    alg: 'HS256',
+    typ: 'JWT'
+  };
+
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = 3600; // 1 hour
+
+  const payload = {
+    jti: Math.random().toString(36).substring(2, 15),
+    grants: {
+      room: roomName
+    },
+    identity,
+    iat: now,
+    exp: now + ttl
+  };
+
+  // Create signature
+  const signingKey = Buffer.from(apiKeySecret);
+  const signature = await crypto.subtle.importKey(
+    'raw',
+    signingKey,
+    { name: 'HMAC', hash: 'SHA-256' },
+    true,
+    ['sign']
+  );
+
+  const encodedHeader = btoa(JSON.stringify(header));
+  const encodedPayload = btoa(JSON.stringify(payload));
+  
+  const data = new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`);
+  const signatureArray = await crypto.subtle.sign('HMAC', signature, data);
+  const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureArray)));
+
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
