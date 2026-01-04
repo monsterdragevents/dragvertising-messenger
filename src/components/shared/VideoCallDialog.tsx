@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, Button } from '@/lib/design-system';
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, X } from 'lucide-react';
 import { useVideoCall } from '@/hooks/shared/useVideoCall';
+import { useVideoCallInvitations, type VideoCall } from '@/hooks/shared/useVideoCallInvitations';
 import { toast } from '@/hooks/shared/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
