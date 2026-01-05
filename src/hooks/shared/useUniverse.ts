@@ -2,7 +2,7 @@
  * Simplified Universe Hook for Messenger
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/shared/use-toast';
@@ -21,9 +21,13 @@ export function useUniverse() {
   const [availableUniverses, setAvailableUniverses] = useState<Universe[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Extract userId - ensure it's always a string or undefined (never null)
+  const userId = user?.id;
+
   // Load available universes
   const loadAvailableUniverses = useCallback(async () => {
-    if (!user) {
+    const currentUserId = user?.id;
+    if (!currentUserId) {
       setAvailableUniverses([]);
       return;
     }
@@ -32,7 +36,7 @@ export function useUniverse() {
       const { data, error } = await supabase
         .from('profile_universes')
         .select('id, handle, display_name, avatar_url, role')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUserId)
         .eq('status', 'active')
         .order('created_at', { ascending: false });
 
@@ -48,9 +52,10 @@ export function useUniverse() {
     }
   }, [user]);
 
-  // Load active universe
+  // Load active universe from active_universe_state table
   useEffect(() => {
-    if (!user) {
+    const currentUserId = user?.id;
+    if (!currentUserId) {
       setUniverse(null);
       setIsLoading(false);
       return;
@@ -61,16 +66,20 @@ export function useUniverse() {
         // Load available universes first
         await loadAvailableUniverses();
 
-        // Check localStorage for active universe
-        const storedUniverseId = localStorage.getItem('active_universe_id');
-        
-        if (storedUniverseId) {
+        // Get active universe from active_universe_state table
+        const { data: activeState, error: stateError } = await supabase
+          .from('active_universe_state')
+          .select('active_profile_universe_id')
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+
+        if (!stateError && activeState?.active_profile_universe_id) {
           const { data, error } = await supabase
             .from('profile_universes')
             .select('id, handle, display_name, avatar_url, role')
-            .eq('id', storedUniverseId)
+            .eq('id', activeState.active_profile_universe_id)
             .eq('status', 'active')
-            .eq('user_id', user.id)
+            .eq('user_id', currentUserId)
             .maybeSingle();
 
           if (!error && data) {
@@ -79,9 +88,6 @@ export function useUniverse() {
               setUniverse(data);
               setIsLoading(false);
               return;
-            } else {
-              // Clear invalid stored universe
-              localStorage.removeItem('active_universe_id');
             }
           }
         }
@@ -90,7 +96,7 @@ export function useUniverse() {
         const { data: universes, error } = await supabase
           .from('profile_universes')
           .select('id, handle, display_name, avatar_url, role')
-          .eq('user_id', user.id)
+          .eq('user_id', currentUserId)
           .eq('status', 'active')
           .neq('role', 'galaxy_holder')
           .neq('role', 'superadmin')
@@ -98,8 +104,23 @@ export function useUniverse() {
 
         if (!error && universes && universes.length > 0) {
           const firstUniverse = universes[0];
-          setUniverse(firstUniverse);
-          localStorage.setItem('active_universe_id', firstUniverse.id);
+          // Ensure firstUniverse exists and has required properties
+          if (firstUniverse && firstUniverse.id) {
+            setUniverse(firstUniverse);
+            
+            // Update active_universe_state in database
+            await supabase
+              .from('active_universe_state')
+              .upsert({
+                user_id: currentUserId,
+                active_profile_universe_id: firstUniverse.id,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id' });
+          }
+        } else {
+          // No valid universes found - set to null and stop loading
+          setUniverse(null);
+          setIsLoading(false);
         }
       } catch (error) {
         console.error('Error loading universe:', error);
@@ -111,28 +132,51 @@ export function useUniverse() {
     loadUniverse();
   }, [user, loadAvailableUniverses]);
 
+  // Use refs to avoid array dependencies in useCallback
+  const availableUniversesRef = useRef(availableUniverses);
+  const universeRef = useRef(universe);
+  
+  useEffect(() => {
+    availableUniversesRef.current = availableUniverses;
+  }, [availableUniverses]);
+  
+  useEffect(() => {
+    universeRef.current = universe;
+  }, [universe]);
+
   // Switch universe function
   const switchUniverse = useCallback(async (universeId: string) => {
-    if (!user) {
+    const currentUserId = user?.id;
+    if (!currentUserId) {
       toast.error('You must be logged in to switch universes');
       return;
     }
 
-    // Find the universe in available universes
-    const targetUniverse = availableUniverses.find(u => u.id === universeId);
+    // Find the universe in available universes using ref
+    const targetUniverse = availableUniversesRef.current.find(u => u.id === universeId);
     if (!targetUniverse) {
       toast.error('Universe not found');
       return;
     }
 
-    // Check if already on this universe
-    if (universe?.id === universeId) {
+    // Check if already on this universe using ref
+    if (universeRef.current?.id === universeId) {
       return;
     }
 
     try {
-      // Update localStorage
-      localStorage.setItem('active_universe_id', universeId);
+      // Update active_universe_state in database
+      const { error: updateError } = await supabase
+        .from('active_universe_state')
+        .upsert({
+          user_id: currentUserId,
+          active_profile_universe_id: universeId,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      if (updateError) {
+        throw updateError;
+      }
       
       // Update state
       setUniverse(targetUniverse);
@@ -142,7 +186,7 @@ export function useUniverse() {
       console.error('Error switching universe:', error);
       toast.error('Failed to switch universe');
     }
-  }, [user, universe, availableUniverses]);
+  }, [user]);
 
   return {
     universe,
