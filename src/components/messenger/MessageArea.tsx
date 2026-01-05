@@ -311,19 +311,31 @@ export function MessageArea({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align={isMe ? "end" : "start"}>
                         {onCopyMessage && (
-                          <DropdownMenuItem onClick={() => onCopyMessage(message.content)}>
+                          <DropdownMenuItem onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onCopyMessage(message.content);
+                          }}>
                             <Copy className="h-4 w-4 mr-2" />
                             Copy
                           </DropdownMenuItem>
                         )}
                         {onReplyToMessage && (
-                          <DropdownMenuItem onClick={() => onReplyToMessage(message)}>
+                          <DropdownMenuItem onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onReplyToMessage(message);
+                          }}>
                             <CornerUpLeft className="h-4 w-4 mr-2" />
                             Reply
                           </DropdownMenuItem>
                         )}
                         {onForwardMessage && (
-                          <DropdownMenuItem onClick={() => onForwardMessage(message)}>
+                          <DropdownMenuItem onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onForwardMessage(message);
+                          }}>
                             <Forward className="h-4 w-4 mr-2" />
                             Forward
                           </DropdownMenuItem>
@@ -331,7 +343,11 @@ export function MessageArea({
                         {isMe && onEditMessage && !message.deleted_at && (
                           <>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => onEditMessage(message)}>
+                            <DropdownMenuItem onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onEditMessage(message);
+                            }}>
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
@@ -341,7 +357,11 @@ export function MessageArea({
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => onDeleteMessage(message.id)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onDeleteMessage(message.id);
+                              }}
                               className="text-destructive focus:text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
